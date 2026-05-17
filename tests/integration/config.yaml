@@ -1,0 +1,21 @@
+version: "1.0"
+
+server:
+  rest_port: 8080
+  grpc_port: 9090
+
+cache:
+  enabled: true
+  type: redis
+  address: "redis:6379"
+  ttl: 5m
+
+logging:
+  level: info
+  format: json
+  destination: elasticsearch
+  elasticsearch_url: "http://elasticsearch:9200"
+
+metrics:
+  enabled: true
+  path: /v1/metrics

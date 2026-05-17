@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package bastion.sentinel.v1;
+
+option go_package = "github.com/zafrem/bastion-sentinel/proto;sentinelv1";
+
+// ─── Service ──────────────────────────────────────────────────────────────────
+
+service SentinelService {
+  rpc Validate(ValidateRequest)       returns (ValidateResponse);
+  rpc ValidateBatch(BatchRequest)     returns (BatchResponse);
+  rpc Health(HealthRequest)           returns (HealthResponse);
+}
+
+// ─── Validate ─────────────────────────────────────────────────────────────────
+
+message ValidateRequest {
+  string              request_id = 1;
+  string              query      = 2;
+  map<string, string> metadata   = 3;
+  ValidateOptions     options    = 4;
+}
+
+message ValidateOptions {
+  bool   strict_mode      = 1;
+  int32  timeout_ms       = 2;
+  bool   include_details  = 3;
+}
+
+message ValidateResponse {
+  string        request_id         = 1;
+  Status        status             = 2;
+  PromptCheck   prompt_check       = 3;
+  MetadataCheck metadata_check     = 4;
+  ExtractedData extracted_data     = 5;
+  float         processing_time_ms = 6;
+  string        error_message      = 7;
+  string        timestamp          = 8;
+
+  enum Status {
+    UNKNOWN = 0;
+    PASSED  = 1;
+    BLOCKED = 2;
+    ERROR   = 3;
+  }
+}
+
+message PromptCheck {
+  string          status           = 1;
+  float           risk_score       = 2;
+  string          method           = 3;
+  repeated string matched_patterns = 4;
+}
+
+message MetadataCheck {
+  string          status                  = 1;
+  bool            required_fields_present = 2;
+  repeated string missing_fields          = 3;
+  repeated string format_errors           = 4;
+}
+
+message ExtractedData {
+  string tenant_id     = 1;
+  string user_id       = 2;
+  string cleaned_query = 3;
+}
+
+// ─── Batch ────────────────────────────────────────────────────────────────────
+
+message BatchRequest {
+  repeated ValidateRequest requests = 1;
+}
+
+message BatchResponse {
+  int32                    total   = 1;
+  int32                    passed  = 2;
+  int32                    blocked = 3;
+  repeated ValidateResponse results = 4;
+}
+
+// ─── Health ───────────────────────────────────────────────────────────────────
+
+message HealthRequest {}
+
+message HealthResponse {
+  string status         = 1;
+  string version        = 2;
+  double uptime_seconds = 3;
+  string engine         = 4;
+}

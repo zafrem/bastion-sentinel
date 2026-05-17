@@ -1,0 +1,51 @@
+# Compiled binary
+sentinel
+sentinel-cli
+
+# Go build cache
+*.o
+*.a
+*.so
+
+# Test output
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Go workspace
+go.work
+go.work.sum
+
+# ONNX model files
+*.onnx
+/models/
+
+# Config overrides (keep example/template configs, ignore local overrides)
+config/local.yaml
+config/dev.yaml
+config/staging.yaml
+config/prod.yaml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore
+
+# Kubernetes secrets / local overrides
+k8s/secrets.yaml
+k8s/local*.yaml
+
+# Load test results
+tests/load/results/
+
+# Temporary files
+tmp/

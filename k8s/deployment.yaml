@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bastion-sentinel
+  namespace: bastion
+  labels:
+    app: sentinel
+    version: "1.0"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: sentinel
+  template:
+    metadata:
+      labels:
+        app: sentinel
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/v1/metrics"
+    spec:
+      containers:
+      - name: sentinel
+        image: bastion/sentinel:1.0.0
+        ports:
+        - containerPort: 8080
+          name: rest
+        - containerPort: 9090
+          name: grpc
+        env:
+        - name: SENTINEL_MODE
+          value: "production"
+        resources:
+          requests:
+            cpu: 500m
+            memory: 256Mi
+          limits:
+            cpu: 2000m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8080
+          initialDelaySeconds: 3
+          periodSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: config
+          mountPath: /etc/sentinel
+          readOnly: true
+        - name: models
+          mountPath: /models
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: sentinel-config
+      - name: models
+        persistentVolumeClaim:
+          claimName: sentinel-models
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bastion-sentinel
+  namespace: bastion
+  labels:
+    app: sentinel
+spec:
+  selector:
+    app: sentinel
+  ports:
+  - name: rest
+    port: 8080
+    targetPort: rest
+  - name: grpc
+    port: 9090
+    targetPort: grpc
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sentinel-hpa
+  namespace: bastion
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: bastion-sentinel
+  minReplicas: 3
+  maxReplicas: 50
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
