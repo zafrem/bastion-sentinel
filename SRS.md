@@ -35,8 +35,8 @@ This specification serves as the baseline reference for the development, operati
 
 **Out of Scope:**
 
-* Multi-tenancy isolation (handled by Module C - Vault)
-* Vector search operations (handled by Module B - Navigator)
+* Multi-tenancy isolation (handled by Module B - Vault)
+* Vector search operations (handled by Module C - Navigator)
 * Persistent audit log storage (handled by Module D - Tracker)
 * Embedding security (handled by Module E - Anchor)
 
@@ -100,12 +100,12 @@ Sentinel is the first line of defense within the five-module Bastion framework.
                          │ (If PASSED)
                          ▼
         ┌────────────────────────────────────┐
-        │   Module C: Vault (Data Isolation) │
+        │   Module B: Vault (Data Isolation) │
         └────────────────┬───────────────────┘
                          │
                          ▼
         ┌────────────────────────────────────┐
-        │   Module B: Navigator (Search)     │
+        │   Module C: Navigator (Search)     │
         └────────────────┬───────────────────┘
                          │
                          ▼
