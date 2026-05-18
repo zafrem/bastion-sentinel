@@ -59,7 +59,7 @@ Requests that pass both checks receive `PASSED`; any failure returns `BLOCKED` w
                                 │ PASSED
                                 ▼
         ┌───────────────────────────────────────┐
-        │     Module C: Vault (Data Isolation)  │
+        │     Module B: Vault (Data Isolation)  │
         └───────────────────────────────────────┘
 ```
 
