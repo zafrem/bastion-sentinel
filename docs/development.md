@@ -48,11 +48,13 @@ go run ./cmd/sentinel testrun --dir tests/fixtures/ --stop-on-fail
 |---------|-------|----------------|
 | `validators/prompt` | 12 | Regex matching, keyword detection, ML stub, scoring aggregation |
 | `validators/metadata` | 12 | Required fields, format rules, UUID, RFC3339, business rules, size limits |
+| `validators/output` | — | PII detection/sanitisation, hallucination grounding, content filter, permission check, format validation |
 | `engine` | 6 | Full engine orchestration, edge cases |
 | `cache` | 10 | memCache TTL, noop cache, CachedValidator hit/miss/error/swap |
-| `server` | 8 | REST endpoints, metrics, health probes, reload |
+| `server` | 8+ | REST endpoints, output endpoints, metrics, health probes, reload |
+| `formatter` | 11+ | JSON/compact/text for Sentinel-IN and Sentinel-OUT responses |
 
-### Fixture format
+### Fixture format — Sentinel-IN
 
 Files live in `tests/fixtures/` as JSONL — one JSON object per line:
 
@@ -62,6 +64,38 @@ Files live in `tests/fixtures/` as JSONL — one JSON object per line:
 
 - `"timestamp":"NOW"` is substituted with the current UTC time at runtime.
 - `expected` must be `"PASSED"` or `"BLOCKED"`.
+
+### Fixture format — Sentinel-OUT
+
+Files live in `tests/output/fixtures/` as JSONL:
+
+```json
+{"request_id":"out-pii-001","description":"response with email address","llm_response":"Contact alice@example.com for help.","user":{"access_level":"full"},"expected":"SANITIZED"}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `request_id` | string | Unique test case ID |
+| `description` | string | Human-readable description |
+| `llm_response` | string | Raw LLM response to validate |
+| `user` | object | `access_level` and optional `user_id` |
+| `retrieval` | object | Optional `source_documents` list for grounding |
+| `expected` | string | `"PASSED"`, `"SANITIZED"`, `"WARNING"`, or `"BLOCKED"` |
+
+Output fixture files:
+
+| File | Cases | What it tests |
+|------|-------|---------------|
+| `clean_responses.jsonl` | 5 | Safe responses that must pass |
+| `pii_responses.jsonl` | 6 | Email, RRN, mobile, credit card, leaked token |
+| `inappropriate_responses.jsonl` | 4 | API keys, GitHub tokens, AWS keys, internal paths |
+| `permission_violations.jsonl` | 3 | Specific amounts to restricted users |
+
+Run the output fixture suite:
+
+```bash
+go run ./cmd/sentinel testrun --dir tests/output/fixtures/ --verbose
+```
 
 ---
 
@@ -138,6 +172,56 @@ All 100+ cases must pass.
 ```bash
 go test ./validators/prompt/... -v
 ```
+
+---
+
+## Adding a Sentinel-OUT rule
+
+### Adding a PII pattern
+
+1. Add the pattern in `config/config.go` → `Default()` → `OutputValidation.PIIReemergence.Patterns`:
+
+   ```go
+   {ID: "pii-007", Name: "passport_number", Pattern: `[A-Z]{1,2}\d{6,9}`, Severity: "high", Action: "redacted"},
+   ```
+
+   - `action`: `"redacted"` replaces the value with `[REDACTED]`; `"masked"` replaces it with `[TYPE_NAME]`.
+   - `severity`: `"critical"`, `"high"`, or `"medium"`.
+
+2. Add a fixture case to `tests/output/fixtures/pii_responses.jsonl`:
+
+   ```json
+   {"request_id":"out-pii-007","description":"response with passport number","llm_response":"Passport AB1234567 was verified.","user":{"access_level":"full"},"expected":"SANITIZED"}
+   ```
+
+3. Run the output fixture suite and unit tests:
+
+   ```bash
+   go run ./cmd/sentinel testrun --dir tests/output/fixtures/ --verbose
+   go test ./validators/output/... -v
+   ```
+
+### Adding a content filter pattern
+
+1. Add the pattern in `config/config.go` → `Default()` → `OutputValidation.ContentFilter.Patterns`:
+
+   ```go
+   {ID: "cf-005", Name: "stripe_key", Pattern: `sk_live_[A-Za-z0-9]{24,}`, Severity: "critical", Action: "block"},
+   ```
+
+   - `action`: `"block"` → response is `BLOCKED` (HTTP 403); `"warn"` → response is `WARNING` (HTTP 200).
+
+2. Add a fixture case to `tests/output/fixtures/inappropriate_responses.jsonl`:
+
+   ```json
+   {"request_id":"out-cf-005","description":"response containing Stripe live key","llm_response":"Use sk_live_abc123xyz456def789ghi012 to process payments.","user":{"access_level":"full"},"expected":"BLOCKED"}
+   ```
+
+3. Run the output fixture suite:
+
+   ```bash
+   go run ./cmd/sentinel testrun --dir tests/output/fixtures/ --verbose
+   ```
 
 ---
 
@@ -269,11 +353,14 @@ bastion-sentinel/
 ├── proto/               # sentinel.proto + generated Go files
 ├── server/              # REST and gRPC servers, metrics, logger, notifier
 ├── tests/
-│   ├── fixtures/        # JSONL test fixtures (100 cases)
+│   ├── fixtures/        # JSONL test fixtures (100 cases, Sentinel-IN)
+│   ├── output/
+│   │   └── fixtures/    # JSONL test fixtures (18 cases, Sentinel-OUT)
 │   ├── integration/     # docker-compose stack for integration testing
 │   └── load/            # k6 load test script
-├── types/               # Shared Go structs (ValidateRequest, ValidateResponse, ...)
+├── types/               # Shared Go structs (ValidateRequest, OutputValidateRequest, ...)
 └── validators/
     ├── metadata/        # Metadata schema + business rule validator
+    ├── output/          # Sentinel-OUT: pii, hallucination, content, permission, format
     └── prompt/          # Prompt injection detector (regex + keyword + ML)
 ```

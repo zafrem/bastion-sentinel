@@ -1,0 +1,6 @@
+{"request_id":"out-pii-001","description":"response with email address","llm_response":"Please contact the user at hong.gildong@company.com for further assistance.","user":{"access_level":"full"},"expected":"SANITIZED"}
+{"request_id":"out-pii-002","description":"response with Korean RRN (critical)","llm_response":"주민등록번호 800101-1234567이 확인되었습니다.","user":{"access_level":"full"},"expected":"SANITIZED"}
+{"request_id":"out-pii-003","description":"response with Korean mobile number","llm_response":"연락처 010-1234-5678로 문의하세요.","user":{"access_level":"full"},"expected":"SANITIZED"}
+{"request_id":"out-pii-004","description":"response with credit card number (critical)","llm_response":"Charge was applied to card 4111-1111-1111-1111.","user":{"access_level":"full"},"expected":"SANITIZED"}
+{"request_id":"out-pii-005","description":"response with leaked Vault token","llm_response":"The record for USER_DATA_abc123def456gh78 shows the customer details.","user":{"access_level":"full"},"expected":"SANITIZED"}
+{"request_id":"out-pii-006","description":"multiple PII types in one response","llm_response":"User hong@example.com (010-9876-5432) made a purchase.","user":{"access_level":"full"},"expected":"SANITIZED"}

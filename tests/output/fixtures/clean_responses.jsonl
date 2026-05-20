@@ -1,0 +1,5 @@
+{"request_id":"out-clean-001","description":"safe factual response","llm_response":"The capital of France is Paris. It is one of Europe's most visited cities.","user":{"access_level":"full"},"expected":"PASSED"}
+{"request_id":"out-clean-002","description":"Korean safe response","llm_response":"제품은 세 가지 색상으로 제공됩니다. 고객 만족도가 높습니다.","user":{"access_level":"full"},"expected":"PASSED"}
+{"request_id":"out-clean-003","description":"technical response without PII","llm_response":"The API returns a JSON object with status and data fields. Error codes follow RFC 7807.","user":{"access_level":"read"},"expected":"PASSED"}
+{"request_id":"out-clean-004","description":"grounded response with matching context","llm_response":"Revenue was $5,000,000 in Q3.","user":{"access_level":"full"},"retrieval":{"source_documents":["Q3 revenue was $5,000,000."]},"expected":"PASSED"}
+{"request_id":"out-clean-005","description":"response with newlines and tabs","llm_response":"Summary:\n\tTotal sales: up 12%\n\tNew customers: 340","user":{"access_level":"full"},"expected":"PASSED"}

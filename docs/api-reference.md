@@ -355,3 +355,138 @@ See `sentinel-cli --help` for the full flag list. Key sub-commands:
 | `config show` | Print active configuration as JSON |
 | `config validate <file>` | Validate a YAML config file |
 | `testrun --dir <dir>` | Run JSONL fixture suites |
+| `validate-output --response "<text>"` | Validate a single LLM response (Sentinel-OUT) |
+| `validate-output --input-file <f>` | Batch validate LLM responses from a JSONL file |
+
+---
+
+## Sentinel-OUT REST API
+
+### POST /v1/validate/output
+
+Validate a single LLM response through the five Sentinel-OUT checks.
+
+`PASSED`, `SANITIZED`, and `WARNING` → **HTTP 200**. `BLOCKED` → **HTTP 403**.
+
+**Request**
+
+```json
+{
+  "RequestID": "out-001",
+  "TraceID":   "trace-abc",
+  "LLMResponse": "Contact alice@example.com for support.",
+  "User": {
+    "UserID":      "john",
+    "TenantID":    "acme",
+    "AccessLevel": "full"
+  },
+  "Retrieval": {
+    "SourceDocuments": ["Contact alice@example.com for support queries."]
+  },
+  "Options": {
+    "CheckPIIReemergence": true,
+    "CheckHallucination":  true,
+    "CheckContent":        true,
+    "CheckPermission":     true
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `RequestID` | string | Caller-supplied ID |
+| `LLMResponse` | string | Raw LLM response text to validate (max 10,000 chars) |
+| `User.AccessLevel` | string | One of `full`, `read`, `anonymized`, `k_anonymized`, `slice`, `aggregated` |
+| `Retrieval.SourceDocuments` | []string | Plain-text grounding sources for hallucination check |
+| `Options` | object | Per-request check selection; zero value enables all checks |
+
+**Response — PASSED (HTTP 200)**
+
+```json
+{
+  "RequestID": "out-001",
+  "Status": "PASSED",
+  "ValidatedResponse": "Contact alice@example.com for support.",
+  "Checks": {
+    "PIICheck":           { "Status": "PASSED", "RedactionsApplied": 0, "Incidents": [] },
+    "HallucinationCheck": { "Status": "PASSED", "GroundingScore": 1.0, "UngroundedClaims": [] },
+    "ContentCheck":       { "Status": "PASSED", "Violations": [], "Severity": "" },
+    "PermissionCheck":    { "Status": "PASSED", "BoundaryViolated": false },
+    "FormatCheck":        { "Status": "PASSED", "LengthOK": true, "StructureOK": true }
+  },
+  "Modifications": [],
+  "ProcessingTimeMs": 0.38
+}
+```
+
+**Response — SANITIZED (HTTP 200)**
+
+```json
+{
+  "RequestID": "out-002",
+  "Status": "SANITIZED",
+  "ValidatedResponse": "Contact [REDACTED] for support.",
+  "Checks": {
+    "PIICheck": {
+      "Status": "VIOLATIONS_DETECTED",
+      "RedactionsApplied": 1,
+      "Incidents": [
+        { "PIIType": "email", "OriginalValue": "alice@example.com", "Start": 8, "End": 25, "ActionTaken": "redacted" }
+      ]
+    },
+    "HallucinationCheck": { "Status": "PASSED", "GroundingScore": 1.0 },
+    "ContentCheck":       { "Status": "PASSED" },
+    "PermissionCheck":    { "Status": "PASSED", "BoundaryViolated": false },
+    "FormatCheck":        { "Status": "PASSED" }
+  },
+  "Modifications": [
+    { "Type": "redacted", "Original": "alice@example.com", "Replacement": "[REDACTED]" }
+  ],
+  "ProcessingTimeMs": 0.52
+}
+```
+
+**Response — BLOCKED (HTTP 403)**
+
+```json
+{
+  "RequestID": "out-003",
+  "Status": "BLOCKED",
+  "ValidatedResponse": "",
+  "Checks": {
+    "ContentCheck": { "Status": "BLOCKED", "Violations": ["openai_api_key"], "Severity": "critical" }
+  },
+  "ProcessingTimeMs": 0.21
+}
+```
+
+---
+
+### POST /v1/validate/output/batch
+
+Validate a JSON array of LLM responses concurrently (8-worker pool).
+
+**Request** — JSON array of output validate request objects:
+
+```json
+[
+  { "RequestID": "ob-1", "LLMResponse": "Paris is the capital of France.", "User": { "AccessLevel": "full" } },
+  { "RequestID": "ob-2", "LLMResponse": "Use key sk-abc123...",            "User": { "AccessLevel": "full" } }
+]
+```
+
+**Response (HTTP 200)**
+
+```json
+{
+  "total":   2,
+  "passed":  1,
+  "blocked": 1,
+  "results": [
+    { "RequestID": "ob-1", "Status": "PASSED",  ... },
+    { "RequestID": "ob-2", "Status": "BLOCKED", ... }
+  ]
+}
+```
+
+The batch response always returns HTTP 200; inspect each `result.Status`.

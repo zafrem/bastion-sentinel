@@ -198,6 +198,113 @@ Fires asynchronously (never delays the request path) when `status = BLOCKED` and
 
 ---
 
+### `output_validation`
+
+Controls the Sentinel-OUT pipeline. All sub-sections are enabled by default.
+
+```yaml
+output_validation:
+  enabled: true
+
+  pii_reemergence:
+    enabled: true
+    patterns:
+      - id: pii-001
+        name: korean_name
+        pattern: "[가-힣]{2,4}\\s*(?:씨|님|선생님|교수님|박사님)"
+        severity: high
+        action: masked
+      - id: pii-002
+        name: korean_rrn
+        pattern: "\\b\\d{6}-[1-4]\\d{6}\\b"
+        severity: critical
+        action: redacted
+      - id: pii-003
+        name: korean_mobile
+        pattern: "\\b01[016789]-\\d{3,4}-\\d{4}\\b"
+        severity: high
+        action: masked
+      - id: pii-004
+        name: email
+        pattern: "[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}"
+        severity: high
+        action: redacted
+      - id: pii-005
+        name: credit_card
+        pattern: "\\b(?:4[0-9]{12}(?:[0-9]{3})?|[25][1-7][0-9]{14}|6(?:011|5[0-9][0-9])[0-9]{12}|3[47][0-9]{13}|3(?:0[0-5]|[68][0-9])[0-9]{11}|(?:2131|1800|35\\d{3})\\d{11})[\\s\\-]?\\b"
+        severity: critical
+        action: redacted
+      - id: pii-006
+        name: leaked_token
+        pattern: "USER_DATA_[A-Za-z0-9]{16}"
+        severity: critical
+        action: redacted
+
+  hallucination:
+    enabled: true
+    grounding_threshold: 0.5   # grounding score below this adds a disclaimer
+    low_score_threshold: 0.3   # grounding score below this returns SUSPICIOUS
+    add_disclaimer: true       # prepend disclaimer when grounding score < grounding_threshold
+
+  content_filter:
+    enabled: true
+    patterns:
+      - id: cf-001
+        name: openai_api_key
+        pattern: "sk-[A-Za-z0-9]{32,}"
+        severity: critical
+        action: block
+      - id: cf-002
+        name: github_token
+        pattern: "ghp_[A-Za-z0-9]{36}"
+        severity: critical
+        action: block
+      - id: cf-003
+        name: aws_access_key
+        pattern: "AKIA[0-9A-Z]{16}"
+        severity: critical
+        action: block
+      - id: cf-004
+        name: internal_path
+        pattern: "(?:/etc/|/var/|/home/|/root/|/srv/)[a-zA-Z0-9/_\\-.]+"
+        severity: medium
+        action: warn
+
+  permission_check:
+    enabled: true
+    access_levels:
+      full:        0   # most permissive — sees all detail
+      read:        1
+      anonymized:  2
+      k_anonymized: 3
+      slice:       4
+      aggregated:  5   # most restricted — no specific values
+
+  format:
+    enabled: true
+    min_length: 10        # shorter responses are rejected
+    max_length: 10000     # longer responses are rejected
+    require_utf8: true
+    allow_control_chars: false   # \n \r \t are always permitted; other control chars are not
+```
+
+| Sub-section | Field | Default | Description |
+|-------------|-------|---------|-------------|
+| `pii_reemergence` | `enabled` | `true` | Enable PII detection and sanitisation |
+| `pii_reemergence` | `patterns` | 6 patterns | Regex pattern list; `action` is `redacted` or `masked` |
+| `hallucination` | `enabled` | `true` | Enable hallucination grounding check |
+| `hallucination` | `grounding_threshold` | `0.5` | Score below this adds a disclaimer to the response |
+| `hallucination` | `low_score_threshold` | `0.3` | Score below this marks the check SUSPICIOUS |
+| `hallucination` | `add_disclaimer` | `true` | Prepend disclaimer text when grounding is low |
+| `content_filter` | `enabled` | `true` | Enable credential/path content filtering |
+| `content_filter` | `patterns` | 4 patterns | Regex pattern list; `action` is `block` or `warn` |
+| `permission_check` | `enabled` | `true` | Enable access-level boundary enforcement |
+| `format` | `min_length` | `10` | Minimum response length in characters |
+| `format` | `max_length` | `10000` | Maximum response length in characters |
+| `format` | `require_utf8` | `true` | Reject responses with invalid UTF-8 sequences |
+
+---
+
 ## Adding detection rules
 
 ### Regex rule

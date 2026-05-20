@@ -21,31 +21,37 @@ const maxBodyBytes = 1 << 20 // 1 MB
 
 // REST is the HTTP server for Bastion-Sentinel.
 type REST struct {
-	mu       sync.RWMutex
-	val      cache.Validator
-	cacheRef cache.Cache
-	cfg      *config.Config
-	cfgPath  string
-	started  time.Time
-	srv      *http.Server
-	log      *slog.Logger
-	notifier *Notifier
+	mu        sync.RWMutex
+	val       cache.Validator
+	cacheRef  cache.Cache
+	cfg       *config.Config
+	cfgPath   string
+	started   time.Time
+	srv       *http.Server
+	log       *slog.Logger
+	notifier  *Notifier
+	outputEng *engine.OutputEngine
 }
 
 func NewREST(cfg *config.Config, val cache.Validator, c cache.Cache, cfgPath string, log *slog.Logger, notifier *Notifier) *REST {
+	outEng, _ := engine.NewOutputEngine(cfg) // errors surface at validate time
+
 	s := &REST{
-		cfg:      cfg,
-		val:      val,
-		cacheRef: c,
-		cfgPath:  cfgPath,
-		started:  time.Now(),
-		log:      log,
-		notifier: notifier,
+		cfg:       cfg,
+		val:       val,
+		cacheRef:  c,
+		cfgPath:   cfgPath,
+		started:   time.Now(),
+		log:       log,
+		notifier:  notifier,
+		outputEng: outEng,
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/validate", s.handleValidate)
 	mux.HandleFunc("/v1/validate/batch", s.handleBatch)
+	mux.HandleFunc("/v1/validate/output", s.handleOutputValidate)
+	mux.HandleFunc("/v1/validate/output/batch", s.handleOutputBatch)
 	mux.HandleFunc("/v1/health", s.handleHealth)
 	mux.HandleFunc("/v1/config", s.handleGetConfig)
 	mux.HandleFunc("/v1/config/reload", s.handleConfigReload)
@@ -65,8 +71,10 @@ func NewREST(cfg *config.Config, val cache.Validator, c cache.Cache, cfgPath str
 
 // Reload swaps the engine and config atomically (mirrors gRPC Reload and POST /v1/config/reload).
 func (s *REST) Reload(cfg *config.Config, newEng cache.Validator) {
+	outEng, _ := engine.NewOutputEngine(cfg)
 	s.mu.Lock()
 	s.cfg = cfg
+	s.outputEng = outEng
 	if cv, ok := s.val.(*cache.CachedValidator); ok {
 		cv.SwapEngine(newEng)
 	} else {
@@ -457,4 +465,145 @@ func nilSafe(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// ─── POST /v1/validate/output ─────────────────────────────────────────────────
+
+type outputValidateReq struct {
+	RequestID   string                      `json:"request_id"`
+	TraceID     string                      `json:"trace_id"`
+	LLMResponse string                      `json:"llm_response"`
+	User        types.UserContext            `json:"user"`
+	Retrieval   types.RetrievalContext      `json:"retrieval"`
+	Options     types.OutputValidationOptions `json:"options"`
+}
+
+func (s *REST) handleOutputValidate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use POST")
+		return
+	}
+	if !isJSONContent(r) {
+		writeError(w, http.StatusUnsupportedMediaType, "INVALID_CONTENT_TYPE", "Content-Type must be application/json")
+		return
+	}
+
+	var req outputValidateReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		return
+	}
+	if req.RequestID == "" {
+		req.RequestID = r.Header.Get("X-Request-ID")
+	}
+
+	s.mu.RLock()
+	outEng := s.outputEng
+	s.mu.RUnlock()
+
+	if outEng == nil {
+		writeError(w, http.StatusInternalServerError, "ENGINE_ERROR", "output engine not initialised")
+		return
+	}
+
+	resp := outEng.Validate(types.OutputValidateRequest{
+		RequestID:   req.RequestID,
+		TraceID:     req.TraceID,
+		LLMResponse: req.LLMResponse,
+		User:        req.User,
+		Retrieval:   req.Retrieval,
+		Options:     req.Options,
+	})
+
+	s.log.Info("validate_output",
+		"request_id", resp.RequestID,
+		"status", resp.Status,
+		"processing_time_ms", resp.ProcessingTimeMs,
+		"pii_incidents", resp.Checks.PIICheck.RedactionsApplied,
+		"grounding_score", resp.Checks.HallucinationCheck.GroundingScore,
+		"permission_violated", resp.Checks.PermissionCheck.BoundaryViolated,
+	)
+
+	httpStatus := http.StatusOK
+	if resp.Status == types.OutputStatusBlocked {
+		httpStatus = http.StatusForbidden
+	}
+	writeJSON(w, httpStatus, resp)
+}
+
+// ─── POST /v1/validate/output/batch ──────────────────────────────────────────
+
+func (s *REST) handleOutputBatch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "use POST")
+		return
+	}
+	if !isJSONContent(r) {
+		writeError(w, http.StatusUnsupportedMediaType, "INVALID_CONTENT_TYPE", "Content-Type must be application/json")
+		return
+	}
+
+	var reqs []outputValidateReq
+	if err := json.NewDecoder(r.Body).Decode(&reqs); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		return
+	}
+
+	s.mu.RLock()
+	outEng := s.outputEng
+	s.mu.RUnlock()
+
+	if outEng == nil {
+		writeError(w, http.StatusInternalServerError, "ENGINE_ERROR", "output engine not initialised")
+		return
+	}
+
+	results := make([]types.OutputValidateResponse, len(reqs))
+	sem := make(chan struct{}, 8)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for i, req := range reqs {
+		wg.Add(1)
+		go func(idx int, req outputValidateReq) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			if req.RequestID == "" {
+				req.RequestID = fmt.Sprintf("out-batch-%d", idx+1)
+			}
+			resp := outEng.Validate(types.OutputValidateRequest{
+				RequestID:   req.RequestID,
+				TraceID:     req.TraceID,
+				LLMResponse: req.LLMResponse,
+				User:        req.User,
+				Retrieval:   req.Retrieval,
+				Options:     req.Options,
+			})
+			mu.Lock()
+			results[idx] = resp
+			mu.Unlock()
+		}(i, req)
+	}
+	wg.Wait()
+
+	passed, blocked, sanitized := 0, 0, 0
+	for _, res := range results {
+		switch res.Status {
+		case types.OutputStatusPassed:
+			passed++
+		case types.OutputStatusBlocked:
+			blocked++
+		case types.OutputStatusSanitized, types.OutputStatusWarning:
+			sanitized++
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"total":     len(results),
+		"passed":    passed,
+		"sanitized": sanitized,
+		"blocked":   blocked,
+		"results":   results,
+	})
 }

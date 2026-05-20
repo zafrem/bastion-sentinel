@@ -11,6 +11,7 @@ type Config struct {
 	Server             ServerConfig             `yaml:"server"`
 	PromptInjection    PromptInjectionConfig    `yaml:"prompt_injection"`
 	MetadataValidation MetadataValidationConfig `yaml:"metadata_validation"`
+	OutputValidation   OutputValidationConfig   `yaml:"output_validation"`
 	Cache              CacheConfig              `yaml:"cache"`
 	Logging            LoggingConfig            `yaml:"logging"`
 	Metrics            MetricsConfig            `yaml:"metrics"`
@@ -105,6 +106,68 @@ type FeaturesConfig struct {
 	HotReload        bool   `yaml:"hot_reload"`
 	GracefulShutdown bool   `yaml:"graceful_shutdown"`
 	ShutdownTimeout  string `yaml:"shutdown_timeout"`
+}
+
+// ─── Output Validation Config ─────────────────────────────────────────────────
+
+type PIIPatternConfig struct {
+	ID       string `yaml:"id"`
+	Name     string `yaml:"name"`
+	Pattern  string `yaml:"pattern"`
+	Severity string `yaml:"severity"` // "critical", "high", "medium"
+}
+
+type VaultIntegrationConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Endpoint string `yaml:"endpoint"`
+	CacheTTL string `yaml:"cache_ttl"`
+}
+
+type PIIReemergenceConfig struct {
+	Enabled          bool                   `yaml:"enabled"`
+	Patterns         []PIIPatternConfig     `yaml:"patterns"`
+	VaultIntegration VaultIntegrationConfig `yaml:"vault_integration"`
+	BlockOnCritical  bool                   `yaml:"block_on_critical"`
+}
+
+type HallucinationConfig struct {
+	Enabled            bool    `yaml:"enabled"`
+	GroundingThreshold float64 `yaml:"grounding_threshold"`
+	LowScoreThreshold  float64 `yaml:"low_score_threshold"`
+	AddDisclaimer      bool    `yaml:"add_disclaimer"`
+	BlockOnLowScore    bool    `yaml:"block_on_low_score"`
+}
+
+type ContentFilterPatternConfig struct {
+	ID       string `yaml:"id"`
+	Name     string `yaml:"name"`
+	Pattern  string `yaml:"pattern"`
+	Severity string `yaml:"severity"`
+}
+
+type ContentFilterConfig struct {
+	Enabled  bool                         `yaml:"enabled"`
+	Patterns []ContentFilterPatternConfig `yaml:"patterns"`
+}
+
+type PermissionCheckConfig struct {
+	Enabled bool `yaml:"enabled"`
+}
+
+type OutputFormatConfig struct {
+	MinLength      int  `yaml:"min_length"`
+	MaxLength      int  `yaml:"max_length"`
+	UTF8Required   bool `yaml:"utf8_required"`
+	NoControlChars bool `yaml:"no_control_chars"`
+}
+
+type OutputValidationConfig struct {
+	Enabled         bool                  `yaml:"enabled"`
+	PIIReemergence  PIIReemergenceConfig  `yaml:"pii_reemergence"`
+	Hallucination   HallucinationConfig   `yaml:"hallucination"`
+	ContentFilter   ContentFilterConfig   `yaml:"content_filter"`
+	PermissionCheck PermissionCheckConfig `yaml:"permission_check"`
+	Format          OutputFormatConfig    `yaml:"format"`
 }
 
 func Default() *Config {
@@ -217,6 +280,44 @@ func Default() *Config {
 			BusinessRules: []BusinessRule{
 				{ID: "br-001", Name: "timestamp_bounds", Enabled: true},
 				{ID: "br-002", Name: "reserved_identifiers", Enabled: true},
+			},
+		},
+		OutputValidation: OutputValidationConfig{
+			Enabled: true,
+			PIIReemergence: PIIReemergenceConfig{
+				Enabled: true,
+				Patterns: []PIIPatternConfig{
+					{ID: "pii-001", Name: "korean_name", Pattern: `[가-힣]{2,4}(?:님|씨|선생님|교수님|박사님)`, Severity: "high"},
+					{ID: "pii-002", Name: "korean_rrn", Pattern: `\d{6}-\d{7}`, Severity: "critical"},
+					{ID: "pii-003", Name: "korean_mobile", Pattern: `01[0-9]-?\d{3,4}-?\d{4}`, Severity: "high"},
+					{ID: "pii-004", Name: "email", Pattern: `[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`, Severity: "high"},
+					{ID: "pii-005", Name: "credit_card", Pattern: `\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}`, Severity: "critical"},
+					{ID: "pii-006", Name: "leaked_token", Pattern: `[A-Z]{2,}_[A-Z]{2,}_[a-z0-9]{16}`, Severity: "high"},
+				},
+				BlockOnCritical: true,
+			},
+			Hallucination: HallucinationConfig{
+				Enabled:            true,
+				GroundingThreshold: 0.5,
+				LowScoreThreshold:  0.3,
+				AddDisclaimer:      true,
+				BlockOnLowScore:    false,
+			},
+			ContentFilter: ContentFilterConfig{
+				Enabled: true,
+				Patterns: []ContentFilterPatternConfig{
+					{ID: "cf-001", Name: "api_key_openai", Pattern: `sk-[a-zA-Z0-9]{32,}`, Severity: "critical"},
+					{ID: "cf-002", Name: "api_key_github", Pattern: `ghp_[a-zA-Z0-9]{36}`, Severity: "critical"},
+					{ID: "cf-003", Name: "aws_access_key", Pattern: `AKIA[0-9A-Z]{16}`, Severity: "critical"},
+					{ID: "cf-004", Name: "internal_unix_path", Pattern: `/(?:var|etc|proc|sys)/[^\s]{3,}`, Severity: "medium"},
+				},
+			},
+			PermissionCheck: PermissionCheckConfig{Enabled: true},
+			Format: OutputFormatConfig{
+				MinLength:      10,
+				MaxLength:      10000,
+				UTF8Required:   true,
+				NoControlChars: true,
 			},
 		},
 		Cache: CacheConfig{

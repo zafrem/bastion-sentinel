@@ -251,6 +251,118 @@ func TestREST_ConfigReloadNoPath(t *testing.T) {
 	}
 }
 
+func TestREST_OutputValidate_Passed(t *testing.T) {
+	srv := newTestREST(t)
+	body, _ := json.Marshal(map[string]any{
+		"request_id":   "out-test-1",
+		"llm_response": "The capital of France is Paris.",
+		"user":         map[string]any{"AccessLevel": "full"},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/validate/output", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	_ = json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["Status"] != "PASSED" {
+		t.Errorf("expected PASSED, got %v", resp["Status"])
+	}
+}
+
+func TestREST_OutputValidate_Sanitized(t *testing.T) {
+	srv := newTestREST(t)
+	body, _ := json.Marshal(map[string]any{
+		"request_id":   "out-test-2",
+		"llm_response": "Contact hong.gildong@company.com for assistance.",
+		"user":         map[string]any{"AccessLevel": "full"},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/validate/output", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 (SANITIZED), got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	_ = json.NewDecoder(rec.Body).Decode(&resp)
+	status, _ := resp["Status"].(string)
+	if status != "SANITIZED" && status != "PASSED" {
+		t.Errorf("expected SANITIZED or PASSED, got %v", status)
+	}
+}
+
+func TestREST_OutputValidate_Blocked(t *testing.T) {
+	srv := newTestREST(t)
+	body, _ := json.Marshal(map[string]any{
+		"request_id":   "out-test-3",
+		"llm_response": "Use this key: sk-abcdefghijklmnopqrstuvwxyz01234567890",
+		"user":         map[string]any{"AccessLevel": "full"},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/validate/output", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	_ = json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["Status"] != "BLOCKED" {
+		t.Errorf("expected BLOCKED, got %v", resp["Status"])
+	}
+}
+
+func TestREST_OutputValidate_MethodNotAllowed(t *testing.T) {
+	srv := newTestREST(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/validate/output", nil)
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405, got %d", rec.Code)
+	}
+}
+
+func TestREST_OutputBatch(t *testing.T) {
+	srv := newTestREST(t)
+	body, _ := json.Marshal([]map[string]any{
+		{
+			"request_id":   "ob-1",
+			"llm_response": "Paris is the capital of France.",
+			"user":         map[string]any{"AccessLevel": "full"},
+		},
+		{
+			"request_id":   "ob-2",
+			"llm_response": "Use this key: sk-abcdefghijklmnopqrstuvwxyz01234567890",
+			"user":         map[string]any{"AccessLevel": "full"},
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/validate/output/batch", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 from output batch, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	_ = json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["total"].(float64) != 2 {
+		t.Errorf("expected total=2, got %v", resp["total"])
+	}
+}
+
+func TestREST_OutputBatch_MethodNotAllowed(t *testing.T) {
+	srv := newTestREST(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/validate/output/batch", nil)
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405, got %d", rec.Code)
+	}
+}
+
 func TestREST_Reload(t *testing.T) {
 	cfg := config.Default()
 	eng, _ := engine.New(cfg)

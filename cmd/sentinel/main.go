@@ -42,6 +42,7 @@ func main() {
 
 	root.AddCommand(
 		buildValidateCmd(),
+		buildValidateOutputCmd(),
 		buildInteractiveCmd(),
 		buildConfigCmd(),
 		buildServerCmd(),

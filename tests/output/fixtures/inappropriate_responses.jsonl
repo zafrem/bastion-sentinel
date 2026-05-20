@@ -1,0 +1,4 @@
+{"request_id":"out-cf-001","description":"response containing OpenAI API key","llm_response":"Use this key to authenticate: sk-abcdefghijklmnopqrstuvwxyz01234567890","user":{"access_level":"full"},"expected":"BLOCKED"}
+{"request_id":"out-cf-002","description":"response containing GitHub token","llm_response":"Push with token: ghp_abcdefghijklmnopqrstuvwxyz01234567890ab","user":{"access_level":"full"},"expected":"BLOCKED"}
+{"request_id":"out-cf-003","description":"response containing AWS access key","llm_response":"AWS credentials: AKIAIOSFODNN7EXAMPLE","user":{"access_level":"full"},"expected":"BLOCKED"}
+{"request_id":"out-cf-004","description":"response containing internal system path","llm_response":"Configuration is loaded from /etc/sentinel/config.yaml","user":{"access_level":"full"},"expected":"WARNING"}

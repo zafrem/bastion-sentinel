@@ -228,3 +228,158 @@ func TestWrite_DefaultIsText(t *testing.T) {
 		t.Error("unknown format should fall back to text")
 	}
 }
+
+// ─── WriteOutput — JSON format ────────────────────────────────────────────────
+
+func passedOutputResp() types.OutputValidateResponse {
+	return types.OutputValidateResponse{
+		RequestID:         "out-001",
+		Status:            types.OutputStatusPassed,
+		ValidatedResponse: "The capital of France is Paris.",
+		Checks: types.OutputValidationResults{
+			PIICheck:           types.PIICheckResult{Status: "PASSED", RedactionsApplied: 0},
+			HallucinationCheck: types.HallucinationCheckResult{Status: "PASSED", GroundingScore: 1.0},
+			ContentCheck:       types.ContentCheckResult{Status: "PASSED"},
+			PermissionCheck:    types.PermissionCheckResult{Status: "PASSED", BoundaryViolated: false},
+			FormatCheck:        types.FormatCheckResult{Status: "PASSED", LengthOK: true, StructureOK: true},
+		},
+		ProcessingTimeMs: 0.33,
+	}
+}
+
+func sanitizedOutputResp() types.OutputValidateResponse {
+	return types.OutputValidateResponse{
+		RequestID:         "out-002",
+		Status:            types.OutputStatusSanitized,
+		ValidatedResponse: "Contact [EMAIL] for help.",
+		Checks: types.OutputValidationResults{
+			PIICheck: types.PIICheckResult{
+				Status:            "VIOLATIONS_DETECTED",
+				RedactionsApplied: 1,
+				Incidents: []types.PIIIncident{
+					{PIIType: "email", OriginalValue: "alice@example.com", Start: 8, End: 25, ActionTaken: "redacted"},
+				},
+			},
+			HallucinationCheck: types.HallucinationCheckResult{Status: "PASSED", GroundingScore: 1.0},
+			ContentCheck:       types.ContentCheckResult{Status: "PASSED"},
+			PermissionCheck:    types.PermissionCheckResult{Status: "PASSED"},
+			FormatCheck:        types.FormatCheckResult{Status: "PASSED", LengthOK: true, StructureOK: true},
+		},
+		Modifications: []types.Modification{
+			{Type: "redacted", Original: "alice@example.com", Replacement: "[REDACTED]"},
+		},
+		ProcessingTimeMs: 0.55,
+	}
+}
+
+func TestWriteOutput_JSON_Passed(t *testing.T) {
+	var buf bytes.Buffer
+	if err := formatter.WriteOutput(&buf, passedOutputResp(), "json", false); err != nil {
+		t.Fatalf("WriteOutput: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, buf.String())
+	}
+	if out["RequestID"] != "out-001" {
+		t.Errorf("RequestID: got %v", out["RequestID"])
+	}
+	if out["Status"] != string(types.OutputStatusPassed) {
+		t.Errorf("Status: got %v", out["Status"])
+	}
+}
+
+func TestWriteOutput_JSON_Sanitized(t *testing.T) {
+	var buf bytes.Buffer
+	if err := formatter.WriteOutput(&buf, sanitizedOutputResp(), "json", false); err != nil {
+		t.Fatalf("WriteOutput: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, buf.String())
+	}
+	if out["Status"] != string(types.OutputStatusSanitized) {
+		t.Errorf("Status: got %v", out["Status"])
+	}
+}
+
+// ─── WriteOutput — compact format ────────────────────────────────────────────
+
+func TestWriteOutput_Compact_Passed(t *testing.T) {
+	var buf bytes.Buffer
+	if err := formatter.WriteOutput(&buf, passedOutputResp(), "compact", false); err != nil {
+		t.Fatalf("WriteOutput compact: %v", err)
+	}
+	line := buf.String()
+	if !strings.Contains(line, "PASSED") {
+		t.Errorf("expected PASSED in compact output: %q", line)
+	}
+	if !strings.Contains(line, "out-001") {
+		t.Errorf("expected request_id in compact output: %q", line)
+	}
+}
+
+func TestWriteOutput_Compact_Sanitized(t *testing.T) {
+	var buf bytes.Buffer
+	if err := formatter.WriteOutput(&buf, sanitizedOutputResp(), "compact", false); err != nil {
+		t.Fatalf("WriteOutput compact: %v", err)
+	}
+	line := buf.String()
+	if !strings.Contains(line, "SANITIZED") {
+		t.Errorf("expected SANITIZED in compact output: %q", line)
+	}
+	if !strings.Contains(line, "pii=1") {
+		t.Errorf("expected pii=1 in compact output: %q", line)
+	}
+}
+
+// ─── WriteOutput — text format ────────────────────────────────────────────────
+
+func TestWriteOutput_Text_Passed(t *testing.T) {
+	var buf bytes.Buffer
+	if err := formatter.WriteOutput(&buf, passedOutputResp(), "text", false); err != nil {
+		t.Fatalf("WriteOutput text: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{"Sentinel-OUT", "out-001", "PASSED"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in text output", want)
+		}
+	}
+}
+
+func TestWriteOutput_Text_ExplainMode(t *testing.T) {
+	var buf bytes.Buffer
+	if err := formatter.WriteOutput(&buf, sanitizedOutputResp(), "text", true); err != nil {
+		t.Fatalf("WriteOutput text explain: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{"PII Check", "Hallucination", "Content Filter", "Permission", "Format"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in explain output", want)
+		}
+	}
+}
+
+func TestWriteOutput_Text_ShowsModifications(t *testing.T) {
+	var buf bytes.Buffer
+	if err := formatter.WriteOutput(&buf, sanitizedOutputResp(), "text", false); err != nil {
+		t.Fatalf("WriteOutput text: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Modifications Applied: 1") {
+		t.Errorf("expected modification count in text output: %q", out)
+	}
+	if !strings.Contains(out, "alice@example.com") {
+		t.Errorf("expected original PII value in text output: %q", out)
+	}
+}
+
+func TestWriteOutput_DefaultIsText(t *testing.T) {
+	var buf1, buf2 bytes.Buffer
+	_ = formatter.WriteOutput(&buf1, passedOutputResp(), "text", false)
+	_ = formatter.WriteOutput(&buf2, passedOutputResp(), "unknown-format", false)
+	if buf1.String() != buf2.String() {
+		t.Error("unknown format should fall back to text for WriteOutput")
+	}
+}

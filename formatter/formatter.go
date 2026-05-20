@@ -90,6 +90,69 @@ func writeCompact(w io.Writer, resp types.ValidateResponse) error {
 	return err
 }
 
+// WriteOutput formats an OutputValidateResponse. format: "text"|"json"|"compact".
+// explain=true includes per-check detail in text mode.
+func WriteOutput(w io.Writer, resp types.OutputValidateResponse, format string, explain bool) error {
+	switch format {
+	case "json":
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		return enc.Encode(resp)
+	case "compact":
+		_, err := fmt.Fprintf(w, "[%s] %s pii=%d grounding=%.2f time=%.1fms\n",
+			resp.RequestID,
+			resp.Status,
+			resp.Checks.PIICheck.RedactionsApplied,
+			resp.Checks.HallucinationCheck.GroundingScore,
+			resp.ProcessingTimeMs,
+		)
+		return err
+	default:
+		return writeOutputText(w, resp, explain)
+	}
+}
+
+func writeOutputText(w io.Writer, resp types.OutputValidateResponse, explain bool) error {
+	border := strings.Repeat("═", 52)
+	divider := strings.Repeat("─", 52)
+
+	lines := []string{
+		border,
+		"  Sentinel-OUT Validation Report",
+		border,
+		fmt.Sprintf("Request ID:      %s", resp.RequestID),
+		fmt.Sprintf("Processing Time: %.2f ms", resp.ProcessingTimeMs),
+		fmt.Sprintf("Final Status:    %s", resp.Status),
+	}
+
+	if explain {
+		lines = append(lines, "",
+			divider,
+			fmt.Sprintf("PII Check:        %s (redactions: %d)",
+				resp.Checks.PIICheck.Status, resp.Checks.PIICheck.RedactionsApplied),
+			fmt.Sprintf("Hallucination:    %s (grounding: %.2f)",
+				resp.Checks.HallucinationCheck.Status,
+				resp.Checks.HallucinationCheck.GroundingScore),
+			fmt.Sprintf("Content Filter:   %s", resp.Checks.ContentCheck.Status),
+			fmt.Sprintf("Permission:       %s (violated: %v)",
+				resp.Checks.PermissionCheck.Status,
+				resp.Checks.PermissionCheck.BoundaryViolated),
+			fmt.Sprintf("Format:           %s", resp.Checks.FormatCheck.Status),
+		)
+	}
+
+	if len(resp.Modifications) > 0 {
+		lines = append(lines, "", divider, fmt.Sprintf("Modifications Applied: %d", len(resp.Modifications)))
+		for _, m := range resp.Modifications {
+			lines = append(lines, fmt.Sprintf("  [%s] %q → %q", m.Type, m.Original, m.Replacement))
+		}
+	}
+
+	lines = append(lines, "", divider, "Validated Response:", resp.ValidatedResponse, border, "")
+	_, err := fmt.Fprintln(w, strings.Join(lines, "\n"))
+	return err
+}
+
 func writeText(w io.Writer, resp types.ValidateResponse) error {
 	border := strings.Repeat("═", 44)
 	divider := strings.Repeat("─", 44)
