@@ -153,11 +153,11 @@ Principle 4: Operational Visibility
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│              User Query                               │
+│              User Query                              │
 └────────────────────────┬─────────────────────────────┘
                          ▼
         ┌────────────────────────────────────┐
-        │   Sentinel-IN (Input Validation)    │
+        │   Sentinel-IN (Input Validation)   │
         └────────────────┬───────────────────┘
                          ▼
                     [...pipeline...]
@@ -167,20 +167,20 @@ Principle 4: Operational Visibility
                     [...pipeline...]
                          ▼
         ┌────────────────────────────────────┐
-        │   Vault-OUT (Permission Re-apply)   │
+        │   Vault-OUT (Permission Re-apply)  │
         └────────────────┬───────────────────┘
                          ▼
         ┌────────────────────────────────────┐
-        │   Sentinel-OUT  ◄── (This doc)      │
-        │   - PII Re-emergence Check          │
-        │   - Hallucination Detection         │
-        │   - Content Filtering               │
-        │   - Permission Verification         │
-        │   - Format Validation               │
+        │   Sentinel-OUT  ◄── (This doc)     │
+        │   - PII Re-emergence Check         │
+        │   - Hallucination Detection        │
+        │   - Content Filtering              │
+        │   - Permission Verification        │
+        │   - Format Validation              │
         └────────────────┬───────────────────┘
                          ▼
         ┌────────────────────────────────────┐
-        │           User Response             │
+        │           User Response            │
         └────────────────────────────────────┘
                          │
                          ▼ (async)
@@ -193,32 +193,32 @@ Sentinel operates as a single service with bidirectional capability:
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│             Unified Sentinel Service                 │
+│             Unified Sentinel Service                │
 ├─────────────────────────────────────────────────────┤
-│                                                      │
-│  ┌─────────────────────────────────────────────┐   │
-│  │     Single Validation Engine                 │   │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────────┐ │   │
-│  │  │ Pattern  │ │  Rule    │ │  ML Model    │ │   │
-│  │  │ Matcher  │ │ Engine   │ │  Inference   │ │   │
-│  │  └──────────┘ └──────────┘ └──────────────┘ │   │
-│  └─────────────────┬───────────────────────────┘   │
+│                                                     │
+│  ┌─────────────────────────────────────────────┐    │
+│  │     Single Validation Engine                │    │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────────┐ │    │
+│  │  │ Pattern  │ │  Rule    │ │  ML Model    │ │    │
+│  │  │ Matcher  │ │ Engine   │ │  Inference   │ │    │
+│  │  └──────────┘ └──────────┘ └──────────────┘ │    │
+│  └─────────────────┬───────────────────────────┘    │
 │                    │                                │
-│  ┌─────────────────┼───────────────────────────┐   │
-│  │   Configuration Manager                     │   │
-│  │  ┌──────────────────────────────────────┐  │   │
-│  │  │ Input Config (Phase 1)               │  │   │
-│  │  │ - Prompt Injection Rules             │  │   │
-│  │  │ - Metadata Schema                    │  │   │
-│  │  └──────────────────────────────────────┘  │   │
-│  │  ┌──────────────────────────────────────┐  │   │
-│  │  │ Output Config (Phase 2) ⭐           │  │   │
-│  │  │ - PII Re-emergence Rules             │  │   │
-│  │  │ - Hallucination Heuristics           │  │   │
-│  │  │ - Content Filter Lists               │  │   │
-│  │  │ - Permission Rules                   │  │   │
-│  │  └──────────────────────────────────────┘  │   │
-│  └────────────────────────────────────────────┘   │
+│  ┌─────────────────┼───────────────────────────┐    │
+│  │   Configuration Manager                     │    │
+│  │  ┌──────────────────────────────────────┐   │    │
+│  │  │ Input Config (Phase 1)               │   │    │
+│  │  │ - Prompt Injection Rules             │   │    │
+│  │  │ - Metadata Schema                    │   │    │
+│  │  └──────────────────────────────────────┘   │    │
+│  │  ┌──────────────────────────────────────┐   │    │
+│  │  │ Output Config (Phase 2) ⭐           │   │    │
+│  │  │ - PII Re-emergence Rules             │   │    │
+│  │  │ - Hallucination Heuristics           │   │    │
+│  │  │ - Content Filter Lists               │   │    │
+│  │  │ - Permission Rules                   │   │    │
+│  │  └──────────────────────────────────────┘   │    │
+│  └─────────────────────────────────────────────┘    │
 │                                                     │
 └─────────────────────────────────────────────────────┘
                           │
