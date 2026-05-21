@@ -16,10 +16,10 @@
 
 ### 1.1 Purpose
 
-This document defines the functional and non-functional requirements for the **Bastion-Sentinel** module. As the input gateway of the Retrieval-Augmented Generation (RAG) pipeline, Sentinel handles two core security responsibilities:
+This document defines the functional and non-functional requirements for the **Bastion-Sentinel** module. Sentinel serves as a **bidirectional security gateway** for the Retrieval-Augmented Generation (RAG) pipeline, handling two distinct phases:
 
-1. **Prompt Injection Detection** - Blocking malicious queries.
-2. **Metadata Verification** - Ensuring the structural validity of incoming data.
+1. **Sentinel-IN (Input Gateway):** Protects against prompt injection and ensures metadata integrity. (Primary focus of this document)
+2. **Sentinel-OUT (Output Gateway):** Validates LLM responses for PII re-emergence, hallucinations, and content policy violations. (Detailed in the Output Validation SRS)
 
 This specification serves as the baseline reference for the development, operations, security, and QA teams to design, implement, test, and operate the Sentinel module.
 

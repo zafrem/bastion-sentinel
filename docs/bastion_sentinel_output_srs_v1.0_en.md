@@ -144,6 +144,7 @@ Principle 4: Operational Visibility
 - Related: Bastion-Vault SRS v1.0
 - Related: Bastion-Navigator SRS v1.0
 - Related: Bastion-Tracker SRS v1.0
+- External: [pii-pattern-engine](https://github.com/zafrem/pii-pattern-engine) (Pattern Repository)
 
 ---
 
@@ -716,6 +717,7 @@ incidents: 3
 
 **FR-PR-001: Pattern-based Detection**
 - Detect common PII patterns in response text
+- **Engine Integration:** Support loading rules from `pii-pattern-engine` YAML format.
 - Korean: RRN, mobile, email, name patterns
 - English: SSN, phone, email, name patterns
 - Multilingual support

@@ -124,10 +124,11 @@ type VaultIntegrationConfig struct {
 }
 
 type PIIReemergenceConfig struct {
-	Enabled          bool                   `yaml:"enabled"`
-	Patterns         []PIIPatternConfig     `yaml:"patterns"`
-	VaultIntegration VaultIntegrationConfig `yaml:"vault_integration"`
-	BlockOnCritical  bool                   `yaml:"block_on_critical"`
+	Enabled             bool                   `yaml:"enabled"`
+	Patterns            []PIIPatternConfig     `yaml:"patterns"`
+	ExternalPatternsDir string                 `yaml:"external_patterns_dir"`
+	VaultIntegration    VaultIntegrationConfig `yaml:"vault_integration"`
+	BlockOnCritical     bool                   `yaml:"block_on_critical"`
 }
 
 type HallucinationConfig struct {
@@ -287,14 +288,12 @@ func Default() *Config {
 			PIIReemergence: PIIReemergenceConfig{
 				Enabled: true,
 				Patterns: []PIIPatternConfig{
-					{ID: "pii-001", Name: "korean_name", Pattern: `[가-힣]{2,4}(?:님|씨|선생님|교수님|박사님)`, Severity: "high"},
-					{ID: "pii-002", Name: "korean_rrn", Pattern: `\d{6}-\d{7}`, Severity: "critical"},
-					{ID: "pii-003", Name: "korean_mobile", Pattern: `01[0-9]-?\d{3,4}-?\d{4}`, Severity: "high"},
-					{ID: "pii-004", Name: "email", Pattern: `[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`, Severity: "high"},
-					{ID: "pii-005", Name: "credit_card", Pattern: `\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}`, Severity: "critical"},
+					// Most standard PII patterns (email, SSN, Korean RRN, credit cards, etc.) 
+					// are now loaded automatically from the external pii-pattern-engine.
 					{ID: "pii-006", Name: "leaked_token", Pattern: `[A-Z]{2,}_[A-Z]{2,}_[a-z0-9]{16}`, Severity: "high"},
 				},
-				BlockOnCritical: true,
+				ExternalPatternsDir: "external/pii-pattern-engine/regex",
+				BlockOnCritical:     true,
 			},
 			Hallucination: HallucinationConfig{
 				Enabled:            true,

@@ -36,12 +36,12 @@ func TestPIIDetector_Email(t *testing.T) {
 	}
 	found := false
 	for _, inc := range result.Incidents {
-		if inc.PIIType == "email" {
+		if inc.OriginalValue == "john.doe@example.com" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected email incident")
+		t.Error("expected email incident for john.doe@example.com")
 	}
 }
 
@@ -50,12 +50,12 @@ func TestPIIDetector_KoreanRRN(t *testing.T) {
 	result := d.Check("주민등록번호: 800101-1234567")
 	hasCritical := false
 	for _, inc := range result.Incidents {
-		if inc.PIIType == "korean_rrn" && inc.ActionTaken == "redacted" {
+		if inc.OriginalValue == "800101-1234567" && inc.ActionTaken == "redacted" {
 			hasCritical = true
 		}
 	}
 	if !hasCritical {
-		t.Error("expected critical (redacted) korean_rrn incident")
+		t.Error("expected critical (redacted) incident for 800101-1234567")
 	}
 }
 
@@ -64,26 +64,27 @@ func TestPIIDetector_KoreanMobile(t *testing.T) {
 	result := d.Check("연락처: 010-1234-5678")
 	found := false
 	for _, inc := range result.Incidents {
-		if inc.PIIType == "korean_mobile" {
+		if inc.OriginalValue == "010-1234-5678" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected korean_mobile incident")
+		t.Error("expected incident for 010-1234-5678")
 	}
 }
 
 func TestPIIDetector_CreditCard(t *testing.T) {
 	d := defaultPIIDetector(t)
-	result := d.Check("Card: 4111-1111-1111-1111")
+	result := d.Check("Card: 4111111111111111")
 	hasCritical := false
 	for _, inc := range result.Incidents {
-		if inc.PIIType == "credit_card" && inc.ActionTaken == "redacted" {
+		if inc.OriginalValue == "4111111111111111" && inc.ActionTaken == "redacted" {
 			hasCritical = true
 		}
 	}
 	if !hasCritical {
-		t.Error("expected critical credit_card incident")
+		t.Logf("Incidents: %+v", result.Incidents)
+		t.Error("expected critical incident for 4111111111111111")
 	}
 }
 

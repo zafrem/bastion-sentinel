@@ -26,6 +26,7 @@ type PIIDetector struct {
 
 func NewPIIDetector(cfg config.PIIReemergenceConfig) (*PIIDetector, error) {
 	var rules []piiRule
+	// ── Add internal patterns from config ──────────────────────────────────
 	for _, r := range cfg.Patterns {
 		re, err := regexp.Compile(r.Pattern)
 		if err != nil {
@@ -33,6 +34,22 @@ func NewPIIDetector(cfg config.PIIReemergenceConfig) (*PIIDetector, error) {
 		}
 		rules = append(rules, piiRule{id: r.ID, name: r.Name, re: re, severity: r.Severity})
 	}
+
+	// ── Add external patterns if directory is provided ─────────────────────
+	if cfg.ExternalPatternsDir != "" {
+		extPatterns, err := LoadExternalPatterns(cfg.ExternalPatternsDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load external PII patterns: %w", err)
+		}
+		for _, r := range extPatterns {
+			re, err := regexp.Compile(r.Pattern)
+			if err != nil {
+				return nil, fmt.Errorf("invalid external PII pattern %s (%s): %w", r.ID, r.Pattern, err)
+			}
+			rules = append(rules, piiRule{id: r.ID, name: r.Name, re: re, severity: r.Severity})
+		}
+	}
+
 	return &PIIDetector{rules: rules, blockOnCritical: cfg.BlockOnCritical}, nil
 }
 

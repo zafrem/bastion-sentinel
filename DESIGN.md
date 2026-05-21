@@ -63,8 +63,12 @@ Responsible for inspecting queries before they reach the LLM or vector stores.
 ### 3.2 Sentinel-OUT (Output Gateway)
 Responsible for validating and sanitizing LLM responses before they reach the end-user.
 
-- **PII Re-emergence Check:** Prevents the LLM from revealing original PII that was previously anonymized, by cross-referencing Vault's mapping tables.
-- **Hallucination Detection:** Compares LLM responses against the retrieved source documents from Navigator to ensure factual grounding.
+- **PII Re-emergence Check:** Prevents the LLM from revealing original PII that was previously anonymized.
+    - **Pattern-based Detection:** Uses high-confidence regex patterns.
+    - **Pattern Engine Integration:** Leverages [pii-pattern-engine](https://github.com/zafrem/pii-pattern-engine) for comprehensive, multi-region PII signatures.
+    - **Verification Logic:** Implements checksum-based verification (Luhn, Mod-97, etc.) to reduce false positives.
+    - **Vault Cross-reference:** Interacts with Bastion-Vault to verify if detected PII matches previously anonymized tokens.
+- **Hallucination Detection:** Compares LLM responses against the retrieved source documents from Navigator to ensure factual grounding using lexical and semantic heuristics.
 - **Content Filtering:** Blocks or sanitizes harmful content, profanity, and sensitive advice (medical/legal).
 - **Permission Boundary Enforcement:** Verifies the response level (e.g., specific vs. aggregated) matches the user's access privileges (e.g., K-anonymity).
 - **Format Validation:** Ensures the response structure and length comply with endpoint requirements.
