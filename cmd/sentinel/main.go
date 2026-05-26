@@ -398,6 +398,76 @@ func jsonResponse(resp types.ValidateResponse) map[string]any {
 	}
 }
 
+// ─── validate-output command ─────────────────────────────────────────────────
+
+func buildValidateOutputCmd() *cobra.Command {
+	var (
+		llmResponse string
+		inputFile   string
+		tenantID    string
+		userID      string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "validate-output",
+		Short: "Validate an LLM response for PII, hallucination, and content policy",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			outEng, err := engine.NewOutputEngine(cfg)
+			if err != nil {
+				return fmt.Errorf("init output engine: %w", err)
+			}
+
+			text := llmResponse
+			if inputFile != "" {
+				data, err := os.ReadFile(inputFile)
+				if err != nil {
+					return fmt.Errorf("read input file: %w", err)
+				}
+				text = strings.TrimSpace(string(data))
+			}
+			if text == "" {
+				return fmt.Errorf("provide --llm-response or --file")
+			}
+
+			resp := outEng.Validate(types.OutputValidateRequest{
+				RequestID:   generateRequestID(),
+				LLMResponse: text,
+				User: types.UserContext{
+					TenantID:    tenantID,
+					UserID:      userID,
+					AccessLevel: "full",
+				},
+			})
+
+			switch outputFormat {
+			case "json":
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				return enc.Encode(resp)
+			default:
+				fmt.Fprintf(cmd.OutOrStdout(), "Status:           %s\n", resp.Status)
+				fmt.Fprintf(cmd.OutOrStdout(), "Processing time:  %.2fms\n", resp.ProcessingTimeMs)
+				fmt.Fprintf(cmd.OutOrStdout(), "PII redactions:   %d\n", resp.Checks.PIICheck.RedactionsApplied)
+				fmt.Fprintf(cmd.OutOrStdout(), "Grounding score:  %.3f\n", resp.Checks.HallucinationCheck.GroundingScore)
+				if resp.Status != types.OutputStatusPassed {
+					fmt.Fprintf(cmd.OutOrStdout(), "Validated output:\n%s\n", resp.ValidatedResponse)
+				}
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&llmResponse, "llm-response", "", "LLM response text to validate")
+	cmd.Flags().StringVar(&inputFile, "file", "", "File containing the LLM response")
+	cmd.Flags().StringVar(&tenantID, "tenant-id", "default", "Tenant ID")
+	cmd.Flags().StringVar(&userID, "user-id", "cli-user", "User ID")
+	return cmd
+}
+
 // ─── interactive (REPL) command ──────────────────────────────────────────────
 
 func buildInteractiveCmd() *cobra.Command {

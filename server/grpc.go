@@ -5,18 +5,60 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/zafrem/bastion-sentinel/cache"
 	"github.com/zafrem/bastion-sentinel/config"
+	"github.com/zafrem/bastion-sentinel/hooks"
 	sentinelv1 "github.com/zafrem/bastion-sentinel/proto"
 	"github.com/zafrem/bastion-sentinel/types"
 )
+
+type grpcTraceKey struct{}
+
+func grpcTraceInterceptor(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	tc := TraceContext{
+		TraceID: uuid.New().String(),
+		SpanID:  uuid.New().String()[:16],
+	}
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if v := md.Get("x-trace-id"); len(v) > 0 {
+			tc.TraceID = v[0]
+		}
+		if v := md.Get("x-span-id"); len(v) > 0 {
+			tc.SpanID = v[0]
+		}
+		if v := md.Get("x-parent-span-id"); len(v) > 0 {
+			tc.ParentSpanID = v[0]
+		}
+		if v := md.Get("x-tenant-id"); len(v) > 0 {
+			tc.TenantID = v[0]
+		}
+		if v := md.Get("x-user-id"); len(v) > 0 {
+			tc.UserID = v[0]
+		}
+		if v := md.Get("x-request-id"); len(v) > 0 {
+			tc.RequestID = v[0]
+		}
+	}
+	ctx = context.WithValue(ctx, grpcTraceKey{}, tc)
+	return handler(ctx, req)
+}
+
+func traceFromGRPCCtx(ctx context.Context) TraceContext {
+	if tc, ok := ctx.Value(grpcTraceKey{}).(TraceContext); ok {
+		return tc
+	}
+	return TraceContext{TraceID: uuid.New().String(), SpanID: uuid.New().String()[:16]}
+}
 
 // GRPC is the gRPC server for Bastion-Sentinel.
 type GRPC struct {
@@ -31,9 +73,18 @@ type GRPC struct {
 	srv      *grpc.Server
 	log      *slog.Logger
 	notifier *Notifier
+	pub      *EventPublisher
+	hm       *hooks.Manager
 }
 
+// Hooks returns the hook manager so external coordinators can register listeners.
+func (g *GRPC) Hooks() *hooks.Manager { return g.hm }
+
 func NewGRPC(cfg *config.Config, val cache.Validator, c cache.Cache, cfgPath string, log *slog.Logger, notifier *Notifier) *GRPC {
+	var pub *EventPublisher
+	if cfg.Events.NATSUrl != "" {
+		pub = NewEventPublisher(cfg.Events.NATSUrl)
+	}
 	g := &GRPC{
 		cfg:      cfg,
 		val:      val,
@@ -42,9 +93,12 @@ func NewGRPC(cfg *config.Config, val cache.Validator, c cache.Cache, cfgPath str
 		started:  time.Now(),
 		log:      log,
 		notifier: notifier,
+		pub:      pub,
+		hm:       hooks.New(),
 	}
 	g.srv = grpc.NewServer(
-		grpc.MaxRecvMsgSize(1 << 20),
+		grpc.MaxRecvMsgSize(1<<20),
+		grpc.ChainUnaryInterceptor(grpcTraceInterceptor),
 	)
 	sentinelv1.RegisterSentinelServiceServer(g.srv, g)
 	return g
@@ -81,7 +135,7 @@ func (g *GRPC) Reload(cfg *config.Config, newEng cache.Validator) {
 
 // ─── RPC: Validate ────────────────────────────────────────────────────────────
 
-func (g *GRPC) Validate(_ context.Context, req *sentinelv1.ValidateRequest) (*sentinelv1.ValidateResponse, error) {
+func (g *GRPC) Validate(ctx context.Context, req *sentinelv1.ValidateRequest) (*sentinelv1.ValidateResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request must not be nil")
 	}
@@ -103,6 +157,45 @@ func (g *GRPC) Validate(_ context.Context, req *sentinelv1.ValidateRequest) (*se
 		"method", resp.PromptCheck.Method,
 	)
 	g.notifier.Notify(resp)
+
+	// Emit Foundation events via trace context from gRPC metadata.
+	tc := traceFromGRPCCtx(ctx)
+	if tc.TenantID == "" {
+		tc.TenantID = req.GetMetadata()["tenant_id"]
+	}
+	tc.RequestID = resp.RequestID
+	if resp.Status == types.StatusBlocked {
+		g.pub.Publish(EventInjectionBlocked(tc, resp.PromptCheck.RiskScore, strings.Join(resp.PromptCheck.MatchedPatterns, ",")))
+		g.hm.Fire(hooks.Event{
+			Type:      hooks.EventInjectionBlocked,
+			RequestID: resp.RequestID,
+			TenantID:  tc.TenantID,
+			TraceID:   tc.TraceID,
+			SpanID:    tc.SpanID,
+			Data:      map[string]interface{}{"score": resp.PromptCheck.RiskScore},
+		})
+	} else if resp.PromptCheck.RiskScore > 0.3 {
+		g.pub.Publish(EventInjectionDetected(tc, resp.PromptCheck.RiskScore, resp.PromptCheck.MatchedPatterns))
+		g.hm.Fire(hooks.Event{
+			Type:      hooks.EventInjectionDetected,
+			RequestID: resp.RequestID,
+			TenantID:  tc.TenantID,
+			TraceID:   tc.TraceID,
+			SpanID:    tc.SpanID,
+			Data:      map[string]interface{}{"score": resp.PromptCheck.RiskScore},
+		})
+	}
+	g.pub.Publish(EventInputValidated(tc, resp.PromptCheck.RiskScore, "grpc"))
+	g.pub.Publish(EventPipelineRoutingDecided(tc, "grpc", "input_validated"))
+	g.hm.Fire(hooks.Event{
+		Type:      hooks.EventInputValidated,
+		RequestID: resp.RequestID,
+		TenantID:  tc.TenantID,
+		TraceID:   tc.TraceID,
+		SpanID:    tc.SpanID,
+		Data:      map[string]interface{}{"score": resp.PromptCheck.RiskScore, "status": string(resp.Status)},
+	})
+
 	return toProtoResponse(resp), nil
 }
 

@@ -24,7 +24,7 @@ Sentinel protects the system from malicious inputs (Prompt Injection) and ensure
 
 ## Getting Started
 ### Prerequisites
-- Go 1.21+
+- Go 1.26.2+
 - ONNX Runtime 1.16+
 - Redis (Optional, for caching)
 
@@ -38,7 +38,12 @@ go build -o sentinel ./cmd/sentinel
 ./sentinel server --config ./config/config.go
 ```
 
-<<<<<<< Updated upstream
+## Documentation
+- [Design Document](DESIGN.md)
+- [SRS Document](docs/bastion_sentinel_srs_v1.0_en.md)
+- [Output SRS Document](docs/bastion_sentinel_output_srs_v1.0_en.md)
+
+## Testing & Fixtures
 Fixture files live in `tests/fixtures/` as JSONL. The `"timestamp":"NOW"` placeholder is substituted with the current UTC time at runtime.
 
 ---
@@ -47,7 +52,7 @@ Fixture files live in `tests/fixtures/` as JSONL. The `"timestamp":"NOW"` placeh
 
 | Component | Technology |
 |-----------|------------|
-| Language | Go 1.23+ |
+| Language | Go 1.26.2+ |
 | gRPC / Protobuf | `google.golang.org/grpc` v1.64, `google.golang.org/protobuf` v1.36 |
 | Caching | Redis 7.0+ (optional) via `github.com/redis/go-redis/v9` |
 | CLI framework | `github.com/spf13/cobra` |
@@ -111,19 +116,15 @@ Fixture files live in `tests/fixtures/` as JSONL. The `"timestamp":"NOW"` placeh
 | Detection accuracy | ≥ 95% |
 
 ---
-## Other module
-  * [Vault](https://github.com/zafrem/bastion-vault)
-  * [Navigator](https://github.com/zafrem/bastion-navigator)
-  * [Anchor](https://github.com/zafrem/bastion-anchor)
-  * [Tracker](https://github.com/zafrem/bastion-tracker)
+
+## Other modules
+* [Vault](../vault)
+* [Navigator](../navigator)
+* [Anchor](../anchor)
+* [Tracker](../tracker)
 
 ---
-=======
-## Documentation
-- [Design Document](DESIGN.md)
-- [SRS Document](docs/bastion_sentinel_srs_v1.0_en.md.md)
-- [Output SRS Document](docs/bastion_sentinel_output_srs_v1.0_en.md)
->>>>>>> Stashed changes
+
 
 ## License
 Apache License 2.0

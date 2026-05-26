@@ -17,6 +17,12 @@ type Config struct {
 	Metrics            MetricsConfig            `yaml:"metrics"`
 	Notifications      NotificationsConfig      `yaml:"notifications"`
 	Features           FeaturesConfig           `yaml:"features"`
+	Events             EventsConfig             `yaml:"events"`
+}
+
+type EventsConfig struct {
+	NATSUrl string `yaml:"nats_url"`
+	Enabled bool   `yaml:"enabled"`
 }
 
 type ServerConfig struct {
