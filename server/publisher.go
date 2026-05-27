@@ -14,7 +14,7 @@ import (
 
 const (
 	sentinelModule  = "sentinel"
-	sentinelVersion = "2.0.0"
+	sentinelVersion = "3.0.0"
 	schemaVersion   = "1.0"
 	subjectPrefix   = "bastion.events.sentinel"
 )
@@ -235,4 +235,26 @@ func extractTraceContext(traceID, spanID, parentSpanID, tenantID, userID, reques
 		UserID:       userID,
 		RequestID:    requestID,
 	}
+}
+
+// ─── Industry filter events (doc 20) ─────────────────────────────────────────
+
+func EventIndustryFilterBlocked(tc TraceContext, filterID, reason string) SentinelEvent {
+	ev := newEvent(tc, "industry_filter_blocked", "warning", "security", map[string]interface{}{
+		"filter_id": filterID,
+		"reason":    reason,
+	})
+	ev.Status = "blocked"
+	ev.ActionTaken = "request_blocked"
+	return ev
+}
+
+func EventIndustryFilterRedacted(tc TraceContext, filterID, reason string) SentinelEvent {
+	ev := newEvent(tc, "industry_filter_redacted", "info", "security", map[string]interface{}{
+		"filter_id": filterID,
+		"reason":    reason,
+	})
+	ev.Status = "redacted"
+	ev.ActionTaken = "content_redacted"
+	return ev
 }

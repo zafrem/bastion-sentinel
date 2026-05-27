@@ -17,6 +17,7 @@ import (
 
 	"github.com/zafrem/bastion-sentinel/cache"
 	"github.com/zafrem/bastion-sentinel/config"
+	"github.com/zafrem/bastion-sentinel/engine"
 	"github.com/zafrem/bastion-sentinel/hooks"
 	sentinelv1 "github.com/zafrem/bastion-sentinel/proto"
 	"github.com/zafrem/bastion-sentinel/types"
@@ -64,17 +65,18 @@ func traceFromGRPCCtx(ctx context.Context) TraceContext {
 type GRPC struct {
 	sentinelv1.UnimplementedSentinelServiceServer
 
-	mu       sync.RWMutex
-	val      cache.Validator
-	cacheRef cache.Cache
-	cfg      *config.Config
-	cfgPath  string
-	started  time.Time
-	srv      *grpc.Server
-	log      *slog.Logger
-	notifier *Notifier
-	pub      *EventPublisher
-	hm       *hooks.Manager
+	mu        sync.RWMutex
+	val       cache.Validator
+	cacheRef  cache.Cache
+	cfg       *config.Config
+	cfgPath   string
+	started   time.Time
+	srv       *grpc.Server
+	log       *slog.Logger
+	notifier  *Notifier
+	outputEng *engine.OutputEngine
+	pub       *EventPublisher
+	hm        *hooks.Manager
 }
 
 // Hooks returns the hook manager so external coordinators can register listeners.
@@ -85,16 +87,18 @@ func NewGRPC(cfg *config.Config, val cache.Validator, c cache.Cache, cfgPath str
 	if cfg.Events.NATSUrl != "" {
 		pub = NewEventPublisher(cfg.Events.NATSUrl)
 	}
+	outEng, _ := engine.NewOutputEngine(cfg) // best-effort; nil means ValidateOutputStream returns Unimplemented
 	g := &GRPC{
-		cfg:      cfg,
-		val:      val,
-		cacheRef: c,
-		cfgPath:  cfgPath,
-		started:  time.Now(),
-		log:      log,
-		notifier: notifier,
-		pub:      pub,
-		hm:       hooks.New(),
+		cfg:       cfg,
+		val:       val,
+		cacheRef:  c,
+		cfgPath:   cfgPath,
+		started:   time.Now(),
+		log:       log,
+		notifier:  notifier,
+		outputEng: outEng,
+		pub:       pub,
+		hm:        hooks.New(),
 	}
 	g.srv = grpc.NewServer(
 		grpc.MaxRecvMsgSize(1<<20),
@@ -197,6 +201,88 @@ func (g *GRPC) Validate(ctx context.Context, req *sentinelv1.ValidateRequest) (*
 	})
 
 	return toProtoResponse(resp), nil
+}
+
+// ─── RPC: ValidateInputStream ────────────────────────────────────────────────
+// Bidirectional streaming: client sends ValidateRequests, server responds with
+// a ValidateResponse for each one. Useful for low-latency batch pipelines that
+// need per-item results without the full batch round-trip.
+
+func (g *GRPC) ValidateInputStream(stream sentinelv1.SentinelService_ValidateInputStreamServer) error {
+	g.mu.RLock()
+	eng := g.val
+	g.mu.RUnlock()
+
+	for {
+		req, err := stream.Recv()
+		if err != nil {
+			return err // io.EOF → normal stream close
+		}
+		resp := eng.Validate(toEngineRequest(req))
+		requestsTotal.WithLabelValues(string(resp.Status)).Inc()
+		injectionScore.Observe(resp.PromptCheck.RiskScore)
+
+		tc := traceFromGRPCCtx(stream.Context())
+		tc.RequestID = resp.RequestID
+		if resp.Status == types.StatusBlocked {
+			g.pub.Publish(EventInjectionBlocked(tc, resp.PromptCheck.RiskScore, strings.Join(resp.PromptCheck.MatchedPatterns, ",")))
+		}
+		g.pub.Publish(EventInputValidated(tc, resp.PromptCheck.RiskScore, "stream"))
+
+		if err := stream.Send(toProtoResponse(resp)); err != nil {
+			return err
+		}
+	}
+}
+
+// ─── RPC: ValidateOutputStream ───────────────────────────────────────────────
+// Bidirectional streaming for output validation. The client sends output
+// payloads encoded as ValidateRequest.query (LLM response text) with metadata
+// carrying user and retrieval context. Returns ValidateResponse per item.
+
+func (g *GRPC) ValidateOutputStream(stream sentinelv1.SentinelService_ValidateOutputStreamServer) error {
+	g.mu.RLock()
+	outEng := g.outputEng
+	g.mu.RUnlock()
+
+	if outEng == nil {
+		return status.Error(codes.Unavailable, "output engine not initialised")
+	}
+
+	for {
+		req, err := stream.Recv()
+		if err != nil {
+			return err
+		}
+		meta := req.GetMetadata()
+		if meta == nil {
+			meta = map[string]string{}
+		}
+		outResp := outEng.Validate(types.OutputValidateRequest{
+			RequestID:   req.GetRequestId(),
+			LLMResponse: req.GetQuery(),
+			User: types.UserContext{
+				TenantID: meta["tenant_id"],
+				UserID:   meta["user_id"],
+			},
+		})
+
+		tc := traceFromGRPCCtx(stream.Context())
+		tc.RequestID = req.GetRequestId()
+		tc.TenantID = meta["tenant_id"]
+		g.pub.Publish(EventOutputValidated(tc, string(outResp.Status), ""))
+
+		pbStatus := sentinelv1.ValidateResponse_PASSED
+		if outResp.Status == types.OutputStatusBlocked {
+			pbStatus = sentinelv1.ValidateResponse_BLOCKED
+		}
+		if err := stream.Send(&sentinelv1.ValidateResponse{
+			RequestId: req.GetRequestId(),
+			Status:    pbStatus,
+		}); err != nil {
+			return err
+		}
+	}
 }
 
 // ─── RPC: ValidateBatch ───────────────────────────────────────────────────────

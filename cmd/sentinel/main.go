@@ -703,7 +703,10 @@ func buildServerCmd() *cobra.Command {
 			log := server.NewLogger(cfg.Logging, cfg.Version)
 			notifier := server.NewNotifier(cfg.Notifications, log)
 
-			restSrv := server.NewREST(cfg, val, c, cfgPath, log, notifier)
+			restSrv, err := server.NewREST(cfg, val, c, cfgPath, log, notifier)
+			if err != nil {
+				return fmt.Errorf("init REST server: %w", err)
+			}
 			grpcSrv := server.NewGRPC(cfg, val, c, cfgPath, log, notifier)
 
 			stop := make(chan os.Signal, 1)

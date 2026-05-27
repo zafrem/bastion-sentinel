@@ -19,9 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	SentinelService_Validate_FullMethodName      = "/bastion.sentinel.v1.SentinelService/Validate"
-	SentinelService_ValidateBatch_FullMethodName = "/bastion.sentinel.v1.SentinelService/ValidateBatch"
-	SentinelService_Health_FullMethodName        = "/bastion.sentinel.v1.SentinelService/Health"
+	SentinelService_Validate_FullMethodName              = "/bastion.sentinel.v1.SentinelService/Validate"
+	SentinelService_ValidateBatch_FullMethodName         = "/bastion.sentinel.v1.SentinelService/ValidateBatch"
+	SentinelService_ValidateInputStream_FullMethodName   = "/bastion.sentinel.v1.SentinelService/ValidateInputStream"
+	SentinelService_ValidateOutputStream_FullMethodName  = "/bastion.sentinel.v1.SentinelService/ValidateOutputStream"
+	SentinelService_Health_FullMethodName                = "/bastion.sentinel.v1.SentinelService/Health"
 )
 
 // SentinelServiceClient is the client API for SentinelService service.
@@ -74,8 +76,50 @@ func (c *sentinelServiceClient) Health(ctx context.Context, in *HealthRequest, o
 type SentinelServiceServer interface {
 	Validate(context.Context, *ValidateRequest) (*ValidateResponse, error)
 	ValidateBatch(context.Context, *BatchRequest) (*BatchResponse, error)
+	ValidateInputStream(SentinelService_ValidateInputStreamServer) error
+	ValidateOutputStream(SentinelService_ValidateOutputStreamServer) error
 	Health(context.Context, *HealthRequest) (*HealthResponse, error)
 	mustEmbedUnimplementedSentinelServiceServer()
+}
+
+// SentinelService_ValidateInputStreamServer is the server-side stream for bidirectional input validation.
+type SentinelService_ValidateInputStreamServer interface {
+	Send(*ValidateResponse) error
+	Recv() (*ValidateRequest, error)
+	grpc.ServerStream
+}
+
+type sentinelServiceValidateInputStreamServer struct{ grpc.ServerStream }
+
+func (x *sentinelServiceValidateInputStreamServer) Send(m *ValidateResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+func (x *sentinelServiceValidateInputStreamServer) Recv() (*ValidateRequest, error) {
+	m := new(ValidateRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// SentinelService_ValidateOutputStreamServer is the server-side stream for bidirectional output validation.
+type SentinelService_ValidateOutputStreamServer interface {
+	Send(*ValidateResponse) error
+	Recv() (*ValidateRequest, error)
+	grpc.ServerStream
+}
+
+type sentinelServiceValidateOutputStreamServer struct{ grpc.ServerStream }
+
+func (x *sentinelServiceValidateOutputStreamServer) Send(m *ValidateResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+func (x *sentinelServiceValidateOutputStreamServer) Recv() (*ValidateRequest, error) {
+	m := new(ValidateRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // UnimplementedSentinelServiceServer must be embedded to have forward compatible implementations.
@@ -87,6 +131,12 @@ func (UnimplementedSentinelServiceServer) Validate(context.Context, *ValidateReq
 }
 func (UnimplementedSentinelServiceServer) ValidateBatch(context.Context, *BatchRequest) (*BatchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ValidateBatch not implemented")
+}
+func (UnimplementedSentinelServiceServer) ValidateInputStream(SentinelService_ValidateInputStreamServer) error {
+	return status.Errorf(codes.Unimplemented, "method ValidateInputStream not implemented")
+}
+func (UnimplementedSentinelServiceServer) ValidateOutputStream(SentinelService_ValidateOutputStreamServer) error {
+	return status.Errorf(codes.Unimplemented, "method ValidateOutputStream not implemented")
 }
 func (UnimplementedSentinelServiceServer) Health(context.Context, *HealthRequest) (*HealthResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Health not implemented")
@@ -158,6 +208,14 @@ func _SentinelService_Health_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SentinelService_ValidateInputStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(SentinelServiceServer).ValidateInputStream(&sentinelServiceValidateInputStreamServer{stream})
+}
+
+func _SentinelService_ValidateOutputStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(SentinelServiceServer).ValidateOutputStream(&sentinelServiceValidateOutputStreamServer{stream})
+}
+
 // SentinelService_ServiceDesc is the grpc.ServiceDesc for SentinelService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -178,6 +236,19 @@ var SentinelService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SentinelService_Health_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ValidateInputStream",
+			Handler:       _SentinelService_ValidateInputStream_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "ValidateOutputStream",
+			Handler:       _SentinelService_ValidateOutputStream_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
 	Metadata: "sentinel.proto",
 }

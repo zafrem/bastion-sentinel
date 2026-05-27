@@ -18,6 +18,31 @@ type Config struct {
 	Notifications      NotificationsConfig      `yaml:"notifications"`
 	Features           FeaturesConfig           `yaml:"features"`
 	Events             EventsConfig             `yaml:"events"`
+	Industry           IndustryConfig           `yaml:"industry"`
+}
+
+// IndustryConfig holds the industry-specific filter extension configuration.
+// See docs/20_extension_sentinel_industry_v1.md.
+type IndustryConfig struct {
+	Enabled         bool                            `yaml:"enabled"`
+	Filters         []IndustryFilterConfig          `yaml:"filters"`
+	TenantOverrides map[string]TenantIndustryConfig `yaml:"tenant_overrides"`
+}
+
+// IndustryFilterConfig configures a single industry filter entry.
+type IndustryFilterConfig struct {
+	ID            string `yaml:"id"`
+	Builtin       string `yaml:"builtin"`         // "hipaa" | "gdpr" | "itar" | "pci"
+	PluginPath    string `yaml:"plugin_path"`     // path to .so plugin (future use)
+	Mode          string `yaml:"mode"`            // "blocking" | "async"
+	Position      string `yaml:"position"`        // "after_core" | "before_core"
+	ActionOnMatch string `yaml:"action_on_match"` // "block" | "redact" | "flag"
+}
+
+// TenantIndustryConfig lists the filter IDs active for a specific tenant.
+// An empty Filters slice means no industry filters run for that tenant.
+type TenantIndustryConfig struct {
+	Filters []string `yaml:"filters"`
 }
 
 type EventsConfig struct {
@@ -179,7 +204,7 @@ type OutputValidationConfig struct {
 
 func Default() *Config {
 	return &Config{
-		Version: "1.0",
+		Version: "3.0",
 		Server: ServerConfig{
 			RESTPort: 8080,
 			GRPCPort: 9090,

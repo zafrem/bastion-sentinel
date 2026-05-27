@@ -11,12 +11,16 @@ import (
 type EventType string
 
 const (
-	EventInputValidated   EventType = "input_validated"
-	EventInjectionBlocked EventType = "injection_blocked"
+	EventInputValidated    EventType = "input_validated"
+	EventInjectionBlocked  EventType = "injection_blocked"
 	EventInjectionDetected EventType = "injection_detected"
-	EventOutputValidated  EventType = "output_validated"
-	EventPIIPrevented     EventType = "pii_re_emergence_prevented"
-	EventContentFiltered  EventType = "content_filtered"
+	EventOutputValidated   EventType = "output_validated"
+	EventPIIPrevented      EventType = "pii_re_emergence_prevented"
+	EventContentFiltered   EventType = "content_filtered"
+	// Industry filter events (doc 20).
+	EventIndustryFilterBlocked  EventType = "industry_filter_blocked"
+	EventIndustryFilterRedacted EventType = "industry_filter_redacted"
+	EventIndustryFilterFlagged  EventType = "industry_filter_flagged"
 )
 
 // Event carries the hook payload.
