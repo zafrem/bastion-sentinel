@@ -28,7 +28,11 @@ func newTestREST(t *testing.T) *server.REST {
 	val := cache.NewCached(eng, c, time.Minute)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	notifier := server.NewNotifier(cfg.Notifications, log)
-	return server.NewREST(cfg, val, c, "", log, notifier)
+	srv, err := server.NewREST(cfg, val, c, "", log, notifier)
+	if err != nil {
+		t.Fatalf("server.NewREST: %v", err)
+	}
+	return srv
 }
 
 func validBody() []byte {
@@ -370,7 +374,10 @@ func TestREST_Reload(t *testing.T) {
 	val := cache.NewCached(eng, c, time.Minute)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	notifier := server.NewNotifier(cfg.Notifications, log)
-	srv := server.NewREST(cfg, val, c, "", log, notifier)
+	srv, err := server.NewREST(cfg, val, c, "", log, notifier)
+	if err != nil {
+		t.Fatalf("server.NewREST: %v", err)
+	}
 
 	// a request is cached
 	srv.ServeHTTP(httptest.NewRecorder(), func() *http.Request {
