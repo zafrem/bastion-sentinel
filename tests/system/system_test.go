@@ -34,7 +34,10 @@ func newSystemServer(t *testing.T) *httptest.Server {
 	val := cache.NewCached(eng, c, time.Minute)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	notifier := server.NewNotifier(cfg.Notifications, log)
-	srv := server.NewREST(cfg, val, c, "", log, notifier)
+	srv, err := server.NewREST(cfg, val, c, "", log, notifier)
+	if err != nil {
+		t.Fatalf("server.NewREST: %v", err)
+	}
 	return httptest.NewServer(srv)
 }
 
