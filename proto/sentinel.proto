@@ -7,9 +7,11 @@ option go_package = "github.com/zafrem/bastion-sentinel/proto;sentinelv1";
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 service SentinelService {
-  rpc Validate(ValidateRequest)       returns (ValidateResponse);
-  rpc ValidateBatch(BatchRequest)     returns (BatchResponse);
-  rpc Health(HealthRequest)           returns (HealthResponse);
+  rpc Validate(ValidateRequest)                           returns (ValidateResponse);
+  rpc ValidateBatch(BatchRequest)                         returns (BatchResponse);
+  rpc ValidateInputStream(stream ValidateRequest)         returns (stream ValidateResponse);
+  rpc ValidateOutputStream(stream ValidateRequest)        returns (stream ValidateResponse);
+  rpc Health(HealthRequest)                               returns (HealthResponse);
 }
 
 // ─── Validate ─────────────────────────────────────────────────────────────────

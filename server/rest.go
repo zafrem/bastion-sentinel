@@ -15,6 +15,7 @@ import (
 	"github.com/zafrem/bastion-sentinel/config"
 	"github.com/zafrem/bastion-sentinel/engine"
 	"github.com/zafrem/bastion-sentinel/hooks"
+	"github.com/zafrem/bastion-sentinel/industry"
 	"github.com/zafrem/bastion-sentinel/types"
 )
 
@@ -22,25 +23,29 @@ const maxBodyBytes = 1 << 20 // 1 MB
 
 // REST is the HTTP server for Bastion-Sentinel.
 type REST struct {
-	mu        sync.RWMutex
-	val       cache.Validator
-	cacheRef  cache.Cache
-	cfg       *config.Config
-	cfgPath   string
-	started   time.Time
-	srv       *http.Server
-	log       *slog.Logger
-	notifier  *Notifier
-	outputEng *engine.OutputEngine
-	pub       *EventPublisher
-	hm        *hooks.Manager
+	mu          sync.RWMutex
+	val         cache.Validator
+	cacheRef    cache.Cache
+	cfg         *config.Config
+	cfgPath     string
+	started     time.Time
+	srv         *http.Server
+	log         *slog.Logger
+	notifier    *Notifier
+	outputEng   *engine.OutputEngine
+	pub         *EventPublisher
+	hm          *hooks.Manager
+	industryReg *industry.Registry
 }
 
 // Hooks returns the HookManager so external coordinators can register listeners.
 func (s *REST) Hooks() *hooks.Manager { return s.hm }
 
-func NewREST(cfg *config.Config, val cache.Validator, c cache.Cache, cfgPath string, log *slog.Logger, notifier *Notifier) *REST {
-	outEng, _ := engine.NewOutputEngine(cfg) // errors surface at validate time
+func NewREST(cfg *config.Config, val cache.Validator, c cache.Cache, cfgPath string, log *slog.Logger, notifier *Notifier) (*REST, error) {
+	outEng, err := engine.NewOutputEngine(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("init output engine: %w", err)
+	}
 
 	var pub *EventPublisher
 	if cfg.Events.NATSUrl != "" {
@@ -48,16 +53,17 @@ func NewREST(cfg *config.Config, val cache.Validator, c cache.Cache, cfgPath str
 	}
 
 	s := &REST{
-		cfg:       cfg,
-		val:       val,
-		cacheRef:  c,
-		cfgPath:   cfgPath,
-		started:   time.Now(),
-		log:       log,
-		notifier:  notifier,
-		outputEng: outEng,
-		pub:       pub,
-		hm:        hooks.New(),
+		cfg:         cfg,
+		val:         val,
+		cacheRef:    c,
+		cfgPath:     cfgPath,
+		started:     time.Now(),
+		log:         log,
+		notifier:    notifier,
+		outputEng:   outEng,
+		pub:         pub,
+		hm:          hooks.New(),
+		industryReg: buildIndustryRegistry(cfg),
 	}
 
 	mux := http.NewServeMux()
@@ -71,7 +77,9 @@ func NewREST(cfg *config.Config, val cache.Validator, c cache.Cache, cfgPath str
 	mux.HandleFunc("/v1/validate/output/mapped", s.handleOutputWithMappings)
 	// SRS-aligned aliases: POST /v1/sentinel/validate/... (SRS §6.3)
 	mux.HandleFunc("/v1/sentinel/validate/input", s.handleValidate)
+	mux.HandleFunc("/v1/sentinel/validate/input/batch", s.handleBatch)
 	mux.HandleFunc("/v1/sentinel/validate/output", s.handleOutputValidate)
+	mux.HandleFunc("/v1/sentinel/validate/output/batch", s.handleOutputBatch)
 	mux.HandleFunc("/v1/sentinel/validate/input/contextual", s.handleValidateWithContext)
 	mux.HandleFunc("/v1/sentinel/validate/output/mapped", s.handleOutputWithMappings)
 	// Standard
@@ -89,15 +97,17 @@ func NewREST(cfg *config.Config, val cache.Validator, c cache.Cache, cfgPath str
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
-	return s
+	return s, nil
 }
 
 // Reload swaps the engine and config atomically (mirrors gRPC Reload and POST /v1/config/reload).
 func (s *REST) Reload(cfg *config.Config, newEng cache.Validator) {
-	outEng, _ := engine.NewOutputEngine(cfg)
+	outEng, err := engine.NewOutputEngine(cfg)
 	s.mu.Lock()
 	s.cfg = cfg
-	s.outputEng = outEng
+	if err == nil {
+		s.outputEng = outEng
+	}
 	if cv, ok := s.val.(*cache.CachedValidator); ok {
 		cv.SwapEngine(newEng)
 	} else {
@@ -192,6 +202,70 @@ func (s *REST) handleValidate(w http.ResponseWriter, r *http.Request) {
 		Metadata:  req.Metadata,
 		Options:   opts,
 	})
+
+	// Run industry blocking filters after core (only if core didn't already block).
+	if resp.Status != types.StatusBlocked {
+		tenantID := req.Metadata["tenant_id"]
+		s.mu.RLock()
+		iReg := s.industryReg
+		s.mu.RUnlock()
+		if iReg != nil {
+			for _, f := range iReg.FiltersForTenant(tenantID) {
+				decision, ferr := f.Filter(r.Context(), industry.FilterRequest{
+					Text:     req.Query,
+					TenantID: tenantID,
+					UserID:   req.Metadata["user_id"],
+					Metadata: req.Metadata,
+				})
+				if ferr != nil {
+					s.log.Warn("industry filter error", "filter_id", f.ID(), "err", ferr)
+					continue
+				}
+				switch decision.Action {
+				case industry.FilterBlock:
+					if !decision.Allowed {
+						itc := extractTraceContext(
+							r.Header.Get("X-Trace-ID"), r.Header.Get("X-Span-ID"),
+							r.Header.Get("X-Parent-Span-ID"), tenantID,
+							req.Metadata["user_id"], req.RequestID,
+						)
+						s.pub.Publish(EventIndustryFilterBlocked(itc, f.ID(), decision.Reason))
+						s.hm.Fire(hooks.Event{
+							Type: hooks.EventIndustryFilterBlocked, RequestID: req.RequestID,
+							TenantID: tenantID,
+							Data:     map[string]interface{}{"filter_id": f.ID(), "reason": decision.Reason},
+							Ctx:      r.Context(),
+						})
+						writeError(w, http.StatusUnprocessableEntity, "INDUSTRY_FILTER_BLOCKED",
+							decision.Reason)
+						return
+					}
+				case industry.FilterRedact:
+					w.Header().Set("X-Industry-Redacted", f.ID())
+					itc := extractTraceContext(
+						r.Header.Get("X-Trace-ID"), r.Header.Get("X-Span-ID"),
+						r.Header.Get("X-Parent-Span-ID"), tenantID,
+						req.Metadata["user_id"], req.RequestID,
+					)
+					s.pub.Publish(EventIndustryFilterRedacted(itc, f.ID(), decision.Reason))
+					s.hm.Fire(hooks.Event{
+						Type: hooks.EventIndustryFilterRedacted, RequestID: req.RequestID,
+						TenantID: tenantID,
+						Data:     map[string]interface{}{"filter_id": f.ID(), "reason": decision.Reason},
+						Ctx:      r.Context(),
+					})
+				case industry.FilterFlag:
+					w.Header().Set("X-Industry-Flag", decision.Reason)
+					s.hm.Fire(hooks.Event{
+						Type: hooks.EventIndustryFilterFlagged, RequestID: req.RequestID,
+						TenantID: tenantID,
+						Data:     map[string]interface{}{"filter_id": f.ID(), "reason": decision.Reason},
+						Ctx:      r.Context(),
+					})
+				}
+			}
+		}
+	}
 
 	requestsTotal.WithLabelValues(string(resp.Status)).Inc()
 	requestDurationMs.Observe(resp.ProcessingTimeMs)
@@ -414,8 +488,14 @@ func (s *REST) handleConfigReload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "ENGINE_ERROR", err.Error())
 		return
 	}
+	newOutEng, err := engine.NewOutputEngine(newCfg)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "ENGINE_ERROR", "output engine: "+err.Error())
+		return
+	}
 	s.mu.Lock()
 	s.cfg = newCfg
+	s.outputEng = newOutEng
 	if cv, ok := s.val.(*cache.CachedValidator); ok {
 		cv.SwapEngine(newEng) // swaps engine + flushes cache
 	} else {
@@ -949,4 +1029,32 @@ func (s *REST) handleOutputBatch(w http.ResponseWriter, r *http.Request) {
 		"blocked":   blocked,
 		"results":   results,
 	})
+}
+
+// ─── industry filter registry ─────────────────────────────────────────────────
+
+// buildIndustryRegistry constructs an IndustryFilterRegistry from the config.
+// Only blocking-mode filters are registered here; async filters would be
+// registered as HookManager handlers in a future extension.
+func buildIndustryRegistry(cfg *config.Config) *industry.Registry {
+	reg := industry.NewRegistry()
+	if !cfg.Industry.Enabled {
+		return reg
+	}
+	for _, fc := range cfg.Industry.Filters {
+		if fc.Mode == "async" {
+			continue
+		}
+		if fc.Builtin != "" {
+			f := industry.NewBuiltin(fc.Builtin, fc.ActionOnMatch)
+			if f != nil {
+				reg.RegisterFilter(f)
+			}
+		}
+		// PluginPath support (future: use plugin.Open)
+	}
+	for tenantID, tc := range cfg.Industry.TenantOverrides {
+		reg.SetTenantFilters(tenantID, tc.Filters)
+	}
+	return reg
 }
