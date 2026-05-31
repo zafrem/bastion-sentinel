@@ -189,7 +189,7 @@ Compiled once at startup from `config.PromptInjectionConfig.RegexRules`. Each ru
 | `Pattern` | Go `regexp` expression |
 | `Severity` | `critical` / `high` / `medium` — informational; does not affect threshold |
 
-All 25 built-in rules are compiled with `(?i)` for case-insensitive matching.
+All built-in rules are compiled with `(?i)` for case-insensitive matching, except `pi-026` which keeps the literal token `DAN` case-sensitive (see note below).
 
 ### Rule catalogue
 
@@ -199,7 +199,7 @@ All 25 built-in rules are compiled with `(?i)` for case-insensitive matching.
 |---|---|---|
 | `pi-001` | `ignore all previous` | Classic direct injection opener |
 | `pi-007` | `disregard (all/your)? previous? (instructions/directives/guidelines)` | Polite override variants |
-| `pi-008` | `(forget/ignore/disregard) your (training/instructions/rules/constraints)` | Training erasure framing |
+| `pi-008` | `(forget/ignore/disregard) (your/all/any)? (training/instructions/rules/constraints/restrictions/limits/limitations/filters)` | Erasure/bypass framing — incl. "ignore **all** restrictions" |
 | `pi-009` | `override your previous (instructions/programming/directives)` | Explicit instruction override |
 
 #### English — identity / persona hijack (critical/high)
@@ -207,6 +207,7 @@ All 25 built-in rules are compiled with `(?i)` for case-insensitive matching.
 | ID | Pattern intent | Catches |
 |---|---|---|
 | `pi-006` | `you are now in (dan/jailbreak/developer/god) mode` | Named jailbreak modes |
+| `pi-026` | `(?i:you are now (a)?) (DAN/jailbroken/jailbreak)` | DAN persona **without** "mode"; `DAN` is case-sensitive so the name "Dan" is not matched |
 | `pi-010` | `(developer/god/unrestricted/evil/do anything now/turbo) mode` | Mode keyword patterns |
 | `pi-011` | `pretend you are an AI without restrictions` | Fictional persona wrapper |
 | `pi-012` | `act as (unrestricted/uncensored/unfiltered/evil/malicious)` | Direct persona injection |
@@ -576,7 +577,8 @@ Both types are hot-reloaded on `SIGHUP` or `POST /v1/config/reload`. New rules t
 | Attack class | Primary coverage | Fallback |
 |---|---|---|
 | Direct override (`ignore all previous`) | `pi-001`, `pi-007` | `kw-009` |
-| Jailbreak modes (DAN, god mode, evil) | `pi-006`, `pi-010` | `kw-001`, `kw-016`, `kw-017` |
+| Jailbreak modes (DAN, god mode, evil) | `pi-006`, `pi-010`, `pi-026` | `kw-001`, `kw-016`, `kw-017` |
+| Restriction-disregard ("ignore all restrictions") | `pi-008` | `kw-006`, `kw-007` |
 | Persona hijack (`act as uncensored AI`) | `pi-012`, `pi-013` | `kw-011` |
 | System prompt exfiltration | `pi-002`, `pi-014`, `pi-015` | `kw-019` |
 | Restriction bypass framing | `pi-005`, `pi-016` | `kw-006`, `kw-007` |

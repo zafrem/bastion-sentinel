@@ -5,7 +5,7 @@
 ### Build
 
 ```bash
-docker build -t bastion/sentinel:1.0.0 .
+docker build -t bastion-rag/sentinel:1.0.0 .
 ```
 
 The Dockerfile uses a two-stage build:
@@ -19,20 +19,20 @@ Target image size is ≤ 50 MB.
 
 ```bash
 # With built-in defaults (no Redis, stdout logging)
-docker run --rm -p 8080:8080 -p 9090:9090 bastion/sentinel:1.0.0
+docker run --rm -p 8080:8080 -p 9090:9090 bastion-rag/sentinel:1.0.0
 
 # With a config file
 docker run --rm \
   -p 8080:8080 -p 9090:9090 \
   -v /etc/sentinel/config.yaml:/etc/sentinel/config.yaml:ro \
-  bastion/sentinel:1.0.0 server --config /etc/sentinel/config.yaml
+  bastion-rag/sentinel:1.0.0 server --config /etc/sentinel/config.yaml
 
 # With Redis
 docker run --rm \
   -p 8080:8080 -p 9090:9090 \
   --link redis:redis \
   -e SENTINEL_CACHE_ADDRESS=redis:6379 \
-  bastion/sentinel:1.0.0
+  bastion-rag/sentinel:1.0.0
 ```
 
 ### Health check
@@ -73,12 +73,12 @@ The Kubernetes manifests are in `k8s/deployment.yaml`.
 ### Prerequisites
 
 ```bash
-kubectl create namespace bastion
+kubectl create namespace bastion-rag
 
 # Create config ConfigMap
 kubectl create configmap sentinel-config \
   --from-file=config.yaml=/etc/sentinel/config.yaml \
-  -n bastion
+  -n bastion-rag
 
 # Create models PVC (if using ONNX inference)
 kubectl apply -f k8s/models-pvc.yaml
@@ -87,7 +87,7 @@ kubectl apply -f k8s/models-pvc.yaml
 ### Deploy
 
 ```bash
-kubectl apply -f k8s/deployment.yaml -n bastion
+kubectl apply -f k8s/deployment.yaml -n bastion-rag
 ```
 
 This creates:
@@ -132,19 +132,19 @@ Standard Prometheus Helm charts pick these up automatically.
 
 ```bash
 # Get the pod name
-POD=$(kubectl get pod -n bastion -l app=sentinel -o jsonpath='{.items[0].metadata.name}')
+POD=$(kubectl get pod -n bastion-rag -l app=sentinel -o jsonpath='{.items[0].metadata.name}')
 
 # Edit the ConfigMap
-kubectl edit configmap sentinel-config -n bastion
+kubectl edit configmap sentinel-config -n bastion-rag
 
 # Signal the pod to reload
-kubectl exec -n bastion $POD -- kill -HUP 1
+kubectl exec -n bastion-rag $POD -- kill -HUP 1
 ```
 
 Or via the REST endpoint (no SSH needed):
 
 ```bash
-kubectl port-forward svc/bastion-sentinel 8080:8080 -n bastion &
+kubectl port-forward svc/bastion-sentinel 8080:8080 -n bastion-rag &
 curl -X POST http://localhost:8080/v1/config/reload
 ```
 
@@ -152,13 +152,13 @@ curl -X POST http://localhost:8080/v1/config/reload
 
 ```bash
 # Deploy canary revision
-kubectl set image deployment/bastion-sentinel sentinel=bastion/sentinel:1.1.0 -n bastion
+kubectl set image deployment/bastion-sentinel sentinel=bastion-rag/sentinel:1.1.0 -n bastion-rag
 
 # Watch rollout
-kubectl rollout status deployment/bastion-sentinel -n bastion
+kubectl rollout status deployment/bastion-sentinel -n bastion-rag
 
 # Roll back if needed
-kubectl rollout undo deployment/bastion-sentinel -n bastion
+kubectl rollout undo deployment/bastion-sentinel -n bastion-rag
 ```
 
 ---

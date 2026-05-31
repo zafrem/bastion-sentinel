@@ -8,7 +8,7 @@
 
 ## Overview
 
-Every request to the Bastion pipeline must carry a metadata envelope that proves its identity and freshness. The metadata validator (`Validator`) enforces four checks on this envelope — required field presence, format/length rules, business logic rules, and payload size limits — before the query is allowed to proceed.
+Every request to the Bastion-RAG pipeline must carry a metadata envelope that proves its identity and freshness. The metadata validator (`Validator`) enforces four checks on this envelope — required field presence, format/length rules, business logic rules, and payload size limits — before the query is allowed to proceed.
 
 A single failure in any check sets the response status to `BLOCKED`. The validator is designed to be fail-closed: ambiguous or malformed metadata is rejected, not passed with a warning.
 

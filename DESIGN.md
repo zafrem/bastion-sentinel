@@ -1,7 +1,7 @@
 # Bastion-Sentinel Design Document
 
 ## 1. Overview
-**Bastion-Sentinel** is a high-performance, bidirectional security gateway designed for Retrieval-Augmented Generation (RAG) pipelines. It serves as both the entry point (**Sentinel-IN**) and the exit point (**Sentinel-OUT**) for the Bastion framework, ensuring that LLM interactions are secure, private, and grounded.
+**Bastion-Sentinel** is a high-performance, bidirectional security gateway designed for Retrieval-Augmented Generation (RAG) pipelines. It serves as both the entry point (**Sentinel-IN**) and the exit point (**Sentinel-OUT**) for the Bastion-RAG framework, ensuring that LLM interactions are secure, private, and grounded.
 
 ### 1.1 Core Mission
 - **Protect:** Block malicious inputs (Prompt Injection) and harmful outputs.

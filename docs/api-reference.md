@@ -269,7 +269,7 @@ On reload failure:
 
 ## gRPC API — port `9090`
 
-Service: `bastion.sentinel.v1.SentinelService`  
+Service: `bastion-rag.sentinel.v1.SentinelService`  
 Proto file: `proto/sentinel.proto`  
 Max message size: 1 MB
 

@@ -215,10 +215,15 @@ func Default() *Config {
 				// ── English: instruction override ──────────────────────────────
 				{ID: "pi-001", Pattern: `(?i)ignore\s+all\s+previous`, Severity: "critical"},
 				{ID: "pi-007", Pattern: `(?i)disregard\s+(all\s+|your\s+)?(previous\s+)?(instructions?|directives?|guidelines?)`, Severity: "critical"},
-				{ID: "pi-008", Pattern: `(?i)(forget|ignore|disregard)\s+(your\s+)?(training|instructions?|guidelines?|rules?|constraints?)`, Severity: "critical"},
+				{ID: "pi-008", Pattern: `(?i)(forget|ignore|disregard)\s+(your\s+|all\s+|any\s+)?(training|instructions?|guidelines?|rules?|constraints?|restrictions?|limits?|limitations?|filters?)`, Severity: "critical"},
 				{ID: "pi-009", Pattern: `(?i)override\s+(your\s+)?(previous\s+)?(instructions?|programming|directives?)`, Severity: "critical"},
 				// ── English: identity / persona hijack ────────────────────────
 				{ID: "pi-006", Pattern: `(?i)you\s+are\s+now\s+(in\s+)?(dan|jailbreak|developer|god)\s+mode`, Severity: "critical"},
+				// pi-026: matches the jailbreak persona "you are now DAN/jailbroken"
+				// without the word "mode". The "you are now" prefix is case-insensitive
+				// (?i:...), but "DAN" stays case-sensitive so the acronym is caught while
+				// the common given name "Dan" is NOT. jailbroken/jailbreak match either case.
+				{ID: "pi-026", Pattern: `(?i:you\s+are\s+now\s+(an?\s+)?)(DAN|[Jj]ailbroken|[Jj]ailbreak)\b`, Severity: "critical"},
 				{ID: "pi-010", Pattern: `(?i)(developer|god|unrestricted|evil|do\s+anything\s+now|turbo)\s+mode`, Severity: "critical"},
 				{ID: "pi-011", Pattern: `(?i)pretend\s+(you\s+are|to\s+be)\s+(an?\s+)?(ai|assistant|bot|model)?\s*(with\s+no|without\s+any?)?\s*(restrictions?|limits?|filters?)`, Severity: "high"},
 				{ID: "pi-012", Pattern: `(?i)act\s+as\s+(if\s+you\s+are\s+)?(an?\s+)?(unrestricted|uncensored|unfiltered|evil|malicious)`, Severity: "high"},
