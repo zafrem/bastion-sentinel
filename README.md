@@ -1,7 +1,7 @@
 # Bastion-Sentinel (Module A)
 
 ## Overview
-**Bastion-Sentinel** is the bidirectional security gateway of the Bastion RAG framework. It serves as both the entry point (Sentinel-IN) and the exit point (Sentinel-OUT) for all interactions with the AI system.
+**Bastion-Sentinel** is the bidirectional security gateway of the Bastion-RAG framework. It serves as both the entry point (Sentinel-IN) and the exit point (Sentinel-OUT) for all interactions with the AI system.
 
 Sentinel protects the system from malicious inputs (Prompt Injection) and ensures the safety and privacy of AI outputs (PII re-emergence, Hallucination filtering).
 
@@ -42,6 +42,10 @@ go build -o sentinel ./cmd/sentinel
 - [Design Document](DESIGN.md)
 - [SRS Document](docs/bastion_sentinel_srs_v1.0_en.md)
 - [Output SRS Document](docs/bastion_sentinel_output_srs_v1.0_en.md)
+
+**Technical deep-dives (code-based):**
+- [Prompt Injection Detection](docs/prompt-injection-detection.md)
+- [Metadata Filtering](docs/metadata-filtering.md)
 
 ## Testing & Fixtures
 Fixture files live in `tests/fixtures/` as JSONL. The `"timestamp":"NOW"` placeholder is substituted with the current UTC time at runtime.
