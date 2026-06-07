@@ -3,6 +3,7 @@ package output
 import (
 	"regexp"
 
+	"github.com/zafrem/bastion-sentinel/config"
 	"github.com/zafrem/bastion-sentinel/types"
 )
 
@@ -17,18 +18,23 @@ var accessRank = map[string]int{
 	"aggregated":   5,
 }
 
-// specificAmountRE detects concrete monetary figures that should only appear
-// in responses for users with full or read access.
-var specificAmountRE = regexp.MustCompile(
-	`\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\s*(?:원|만원|억원|won|KRW|USD|\$|€|£)\b` + `|` +
-		`\$\s*\d{1,3}(?:,\d{3})+(?:\.\d+)?\b` + `|` +
-		`\b\d+(?:만|억)\s*원\b`,
-)
+// DefaultSpecificAmountPattern detects concrete monetary figures that should
+// only appear in responses for users with full or read access. It is used when
+// output_validation.permission_check.specific_amount_pattern is empty.
+const DefaultSpecificAmountPattern = `\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\s*(?:원|만원|억원|won|KRW|USD|\$|€|£)\b` + `|` +
+	`\$\s*\d{1,3}(?:,\d{3})+(?:\.\d+)?\b` + `|` +
+	`\b\d+(?:만|억)\s*원\b`
 
 // PermissionChecker enforces data access-level boundaries in LLM responses.
-type PermissionChecker struct{}
+type PermissionChecker struct {
+	specificAmountRE *regexp.Regexp
+}
 
-func NewPermissionChecker() *PermissionChecker { return &PermissionChecker{} }
+func NewPermissionChecker(cfg config.PermissionCheckConfig) *PermissionChecker {
+	return &PermissionChecker{
+		specificAmountRE: compileOrDefault(cfg.SpecificAmountPattern, DefaultSpecificAmountPattern),
+	}
+}
 
 // Check compares the information level inferred from the response against the
 // user's declared access level and flags boundary violations.
@@ -67,7 +73,7 @@ func (c *PermissionChecker) Check(response string, user types.UserContext) types
 // content implies. Returns "full" if specific monetary amounts are detected,
 // otherwise "k_anonymized" as a conservative estimate.
 func (c *PermissionChecker) analyzeResponseLevel(response string) string {
-	if specificAmountRE.MatchString(response) {
+	if c.specificAmountRE.MatchString(response) {
 		return "full"
 	}
 	return "k_anonymized"

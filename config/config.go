@@ -37,6 +37,12 @@ type IndustryFilterConfig struct {
 	Mode          string `yaml:"mode"`            // "blocking" | "async"
 	Position      string `yaml:"position"`        // "after_core" | "before_core"
 	ActionOnMatch string `yaml:"action_on_match"` // "block" | "redact" | "flag"
+	// Patterns overrides the built-in regex set for regex-based filters
+	// (hipaa/gdpr/pci). Empty keeps the built-in defaults.
+	Patterns []string `yaml:"patterns"`
+	// Keywords overrides the built-in keyword set for keyword-based filters
+	// (itar). Empty keeps the built-in defaults.
+	Keywords []string `yaml:"keywords"`
 }
 
 // TenantIndustryConfig lists the filter IDs active for a specific tenant.
@@ -163,11 +169,21 @@ type PIIReemergenceConfig struct {
 }
 
 type HallucinationConfig struct {
-	Enabled            bool    `yaml:"enabled"`
-	GroundingThreshold float64 `yaml:"grounding_threshold"`
-	LowScoreThreshold  float64 `yaml:"low_score_threshold"`
-	AddDisclaimer      bool    `yaml:"add_disclaimer"`
-	BlockOnLowScore    bool    `yaml:"block_on_low_score"`
+	Enabled            bool                  `yaml:"enabled"`
+	GroundingThreshold float64               `yaml:"grounding_threshold"`
+	LowScoreThreshold  float64               `yaml:"low_score_threshold"`
+	AddDisclaimer      bool                  `yaml:"add_disclaimer"`
+	BlockOnLowScore    bool                  `yaml:"block_on_low_score"`
+	ClaimPatterns      ClaimPatternsConfig   `yaml:"claim_patterns"`
+}
+
+// ClaimPatternsConfig holds the regexes used to extract factual claims (numbers,
+// dates, percentages) from an LLM response for grounding verification. Empty
+// fields fall back to the built-in defaults (see output.DefaultClaimPatterns).
+type ClaimPatternsConfig struct {
+	Numerical  string `yaml:"numerical"`
+	Date       string `yaml:"date"`
+	Percentage string `yaml:"percentage"`
 }
 
 type ContentFilterPatternConfig struct {
@@ -184,6 +200,9 @@ type ContentFilterConfig struct {
 
 type PermissionCheckConfig struct {
 	Enabled bool `yaml:"enabled"`
+	// SpecificAmountPattern detects concrete monetary figures that imply full
+	// access. Empty falls back to output.DefaultSpecificAmountPattern.
+	SpecificAmountPattern string `yaml:"specific_amount_pattern"`
 }
 
 type OutputFormatConfig struct {

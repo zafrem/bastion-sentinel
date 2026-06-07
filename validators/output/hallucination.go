@@ -8,14 +8,17 @@ import (
 	"github.com/zafrem/bastion-sentinel/types"
 )
 
-var (
+// DefaultClaimPatterns holds the built-in claim-extraction regexes. They are
+// used when the corresponding config field is empty, so behaviour is unchanged
+// unless an operator overrides a pattern in output_validation.hallucination.claim_patterns.
+var DefaultClaimPatterns = config.ClaimPatternsConfig{
 	// Numerical values: integers, decimals, thousands-separated, with optional suffixes.
-	numericalRE = regexp.MustCompile(`\b\d{1,3}(?:,\d{3})*(?:\.\d+)?(?:\s*(?:만|억|천|M|K|B))?\b`)
+	Numerical: `\b\d{1,3}(?:,\d{3})*(?:\.\d+)?(?:\s*(?:만|억|천|M|K|B))?\b`,
 	// Dates: YYYY-MM-DD or DD/MM/YYYY etc.
-	dateRE = regexp.MustCompile(`\b\d{4}[-./]\d{1,2}[-./]\d{1,2}\b|\b\d{1,2}[-./]\d{1,2}[-./]\d{4}\b`)
+	Date: `\b\d{4}[-./]\d{1,2}[-./]\d{1,2}\b|\b\d{1,2}[-./]\d{1,2}[-./]\d{4}\b`,
 	// Percentages.
-	percentRE = regexp.MustCompile(`\b\d+(?:\.\d+)?%\b`)
-)
+	Percentage: `\b\d+(?:\.\d+)?%\b`,
+}
 
 type claim struct {
 	kind  string // "numerical", "date", "percentage"
@@ -25,16 +28,36 @@ type claim struct {
 // HallucinationDetector verifies that factual claims in an LLM response are
 // grounded in the retrieved source documents using lexical overlap heuristics.
 type HallucinationDetector struct {
-	cfg config.HallucinationConfig
+	cfg        config.HallucinationConfig
+	numericalRE *regexp.Regexp
+	dateRE      *regexp.Regexp
+	percentRE   *regexp.Regexp
 }
 
 func NewHallucinationDetector(cfg config.HallucinationConfig) *HallucinationDetector {
-	return &HallucinationDetector{cfg: cfg}
+	p := cfg.ClaimPatterns
+	return &HallucinationDetector{
+		cfg:         cfg,
+		numericalRE: compileOrDefault(p.Numerical, DefaultClaimPatterns.Numerical),
+		dateRE:      compileOrDefault(p.Date, DefaultClaimPatterns.Date),
+		percentRE:   compileOrDefault(p.Percentage, DefaultClaimPatterns.Percentage),
+	}
+}
+
+// compileOrDefault compiles pattern, falling back to def if pattern is empty or
+// fails to compile (a bad override must never crash the validator).
+func compileOrDefault(pattern, def string) *regexp.Regexp {
+	if pattern != "" {
+		if re, err := regexp.Compile(pattern); err == nil {
+			return re
+		}
+	}
+	return regexp.MustCompile(def)
 }
 
 // Check returns a grounding score and list of unverified claims.
 func (d *HallucinationDetector) Check(response string, sources []string) types.HallucinationCheckResult {
-	claims := extractClaims(response)
+	claims := d.extractClaims(response)
 	if len(claims) == 0 || len(sources) == 0 {
 		return types.HallucinationCheckResult{
 			Status:         "PASSED",
@@ -71,15 +94,15 @@ func (d *HallucinationDetector) Check(response string, sources []string) types.H
 	}
 }
 
-func extractClaims(text string) []claim {
+func (d *HallucinationDetector) extractClaims(text string) []claim {
 	var claims []claim
-	for _, m := range numericalRE.FindAllString(text, -1) {
+	for _, m := range d.numericalRE.FindAllString(text, -1) {
 		claims = append(claims, claim{"numerical", m})
 	}
-	for _, m := range dateRE.FindAllString(text, -1) {
+	for _, m := range d.dateRE.FindAllString(text, -1) {
 		claims = append(claims, claim{"date", m})
 	}
-	for _, m := range percentRE.FindAllString(text, -1) {
+	for _, m := range d.percentRE.FindAllString(text, -1) {
 		claims = append(claims, claim{"percentage", m})
 	}
 	return claims
