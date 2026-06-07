@@ -34,7 +34,7 @@ func NewOutputEngine(cfg *config.Config) (*OutputEngine, error) {
 		pii:        pii,
 		halluc:     output.NewHallucinationDetector(cfg.OutputValidation.Hallucination),
 		content:    content,
-		permission: output.NewPermissionChecker(),
+		permission: output.NewPermissionChecker(cfg.OutputValidation.PermissionCheck),
 		format:     output.NewFormatValidator(cfg.OutputValidation.Format),
 		cfg:        cfg.OutputValidation,
 	}, nil

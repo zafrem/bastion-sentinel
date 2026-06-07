@@ -38,6 +38,32 @@ go build -o sentinel ./cmd/sentinel
 ./sentinel server --config ./config/config.go
 ```
 
+### Configurable detection patterns
+The regexes used by the output validators and industry compliance filters are
+externalized to the YAML config — override them without touching code. Every
+field is optional; when omitted the built-in default is used, and an invalid
+override falls back to the default. Available keys:
+
+```yaml
+output_validation:
+  hallucination:
+    claim_patterns:
+      numerical:  ""   # default: \b\d{1,3}(?:,\d{3})*(?:\.\d+)?(?:\s*(?:만|억|천|M|K|B))?\b
+      date:       ""   # default: \b\d{4}[-./]\d{1,2}[-./]\d{1,2}\b|\b\d{1,2}[-./]\d{1,2}[-./]\d{4}\b
+      percentage: ""   # default: \b\d+(?:\.\d+)?%\b
+  permission_check:
+    specific_amount_pattern: ""   # default amount-detection regex
+
+# Industry compliance filters accept per-filter regex/keyword overrides.
+# When patterns/keywords are empty the built-in HIPAA/GDPR/PCI/ITAR sets apply.
+industry:
+  filters:
+    - builtin: hipaa
+      action_on_match: redact
+      patterns: []     # empty → DefaultHIPAAPatterns
+      keywords: []
+```
+
 ## Documentation
 - [Design Document](DESIGN.md)
 - [SRS Document](docs/bastion_sentinel_srs_v1.0_en.md)

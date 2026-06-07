@@ -1046,7 +1046,7 @@ func buildIndustryRegistry(cfg *config.Config) *industry.Registry {
 			continue
 		}
 		if fc.Builtin != "" {
-			f := industry.NewBuiltin(fc.Builtin, fc.ActionOnMatch)
+			f := industry.NewBuiltinWithOverrides(fc.Builtin, fc.ActionOnMatch, fc.Patterns, fc.Keywords)
 			if f != nil {
 				reg.RegisterFilter(f)
 			}
