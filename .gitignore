@@ -49,3 +49,6 @@ tests/load/results/
 
 # Temporary files
 tmp/
+
+# Compiled binaries (reproducible via `go build`)
+bin/
