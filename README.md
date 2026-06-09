@@ -24,7 +24,7 @@ Sentinel protects the system from malicious inputs (Prompt Injection) and ensure
 
 ## Getting Started
 ### Prerequisites
-- Go 1.26.2+
+- Go 1.25+
 - ONNX Runtime 1.16+
 - Redis (Optional, for caching)
 
@@ -35,8 +35,13 @@ go build -o sentinel ./cmd/sentinel
 
 ### Running the Server
 ```bash
-./sentinel server --config ./config/config.go
+# Run from the module root: the engine loads PII patterns from the relative
+# path external/pii-pattern-engine/regex, so the working directory matters.
+./sentinel server
 ```
+The server starts with a built-in default configuration (REST `:8080`, gRPC
+`:9090`). To override it, pass a YAML file with `--config <path>`; see the
+configurable keys below.
 
 ### Configurable detection patterns
 The regexes used by the output validators and industry compliance filters are
@@ -82,7 +87,7 @@ Fixture files live in `tests/fixtures/` as JSONL. The `"timestamp":"NOW"` placeh
 
 | Component | Technology |
 |-----------|------------|
-| Language | Go 1.26.2+ |
+| Language | Go 1.25+ |
 | gRPC / Protobuf | `google.golang.org/grpc` v1.64, `google.golang.org/protobuf` v1.36 |
 | Caching | Redis 7.0+ (optional) via `github.com/redis/go-redis/v9` |
 | CLI framework | `github.com/spf13/cobra` |
