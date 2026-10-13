@@ -92,7 +92,7 @@ func NewREST(cfg *config.Config, val cache.Validator, c cache.Cache, cfgPath str
 
 	s.srv = &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Server.RESTPort),
-		Handler:      withMiddleware(mux),
+		Handler:      withMiddleware(s.authMiddleware(mux)),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

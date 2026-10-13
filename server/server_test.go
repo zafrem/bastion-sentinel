@@ -224,9 +224,10 @@ func TestREST_BatchMethodNotAllowed(t *testing.T) {
 }
 
 func TestREST_GetConfig(t *testing.T) {
-	srv := newTestREST(t)
+	srv := newAuthREST(t, "test-token")
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/config", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", rec.Code)
@@ -241,9 +242,10 @@ func TestREST_GetConfig(t *testing.T) {
 
 func TestREST_ConfigReloadNoPath(t *testing.T) {
 	// no cfgPath → returns no-op
-	srv := newTestREST(t)
+	srv := newAuthREST(t, "test-token")
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/v1/config/reload", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", rec.Code)

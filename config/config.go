@@ -59,6 +59,12 @@ type EventsConfig struct {
 type ServerConfig struct {
 	RESTPort int `yaml:"rest_port"`
 	GRPCPort int `yaml:"grpc_port"`
+	// AuthToken is a shared bearer token for the REST API. When set, every
+	// route except the health probes requires "Authorization: Bearer <token>".
+	// When empty, the admin routes (/v1/config, /v1/config/reload) are disabled
+	// and validation routes stay open. SENTINEL_AUTH_TOKEN overrides an empty
+	// value. Never serialised: GET /v1/config must not echo it.
+	AuthToken string `yaml:"auth_token" json:"-"`
 }
 
 type PromptInjectionConfig struct {
