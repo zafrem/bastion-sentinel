@@ -22,15 +22,27 @@ var adminPaths = map[string]bool{
 	"/v1/config/reload": true,
 }
 
+// resolveAuthToken returns the shared bearer token: the config value, else SENTINEL_AUTH_TOKEN.
+func resolveAuthToken(configured string) string {
+	if configured == "" {
+		return os.Getenv("SENTINEL_AUTH_TOKEN")
+	}
+	return configured
+}
+
+// tokenMatches reports whether the "Bearer <token>" header value carries want,
+// comparing in constant time.
+func tokenMatches(header, want string) bool {
+	got, ok := strings.CutPrefix(header, "Bearer ")
+	return ok && subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
+
 // authToken returns the configured shared token (config first, then env).
 func (s *REST) authToken() string {
 	s.mu.RLock()
 	tok := s.cfg.Server.AuthToken
 	s.mu.RUnlock()
-	if tok == "" {
-		tok = os.Getenv("SENTINEL_AUTH_TOKEN")
-	}
-	return tok
+	return resolveAuthToken(tok)
 }
 
 func (s *REST) authMiddleware(next http.Handler) http.Handler {
@@ -49,8 +61,7 @@ func (s *REST) authMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		got, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if !ok || subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
+		if !tokenMatches(r.Header.Get("Authorization"), token) {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="sentinel"`)
 			writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "missing or invalid bearer token")
 			return

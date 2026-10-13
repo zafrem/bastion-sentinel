@@ -102,7 +102,8 @@ func NewGRPC(cfg *config.Config, val cache.Validator, c cache.Cache, cfgPath str
 	}
 	g.srv = grpc.NewServer(
 		grpc.MaxRecvMsgSize(1<<20),
-		grpc.ChainUnaryInterceptor(grpcTraceInterceptor),
+		grpc.ChainUnaryInterceptor(g.authUnaryInterceptor, grpcTraceInterceptor),
+		grpc.ChainStreamInterceptor(g.authStreamInterceptor),
 	)
 	sentinelv1.RegisterSentinelServiceServer(g.srv, g)
 	return g
@@ -119,6 +120,9 @@ func (g *GRPC) ListenAndServe() error {
 	}
 	return g.srv.Serve(ln)
 }
+
+// Serve accepts connections on lis (used by tests with an in-memory listener).
+func (g *GRPC) Serve(lis net.Listener) error { return g.srv.Serve(lis) }
 
 func (g *GRPC) Shutdown() {
 	g.srv.GracefulStop()

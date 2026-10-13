@@ -703,6 +703,10 @@ func buildServerCmd() *cobra.Command {
 			log := server.NewLogger(cfg.Logging, cfg.Version)
 			notifier := server.NewNotifier(cfg.Notifications, log)
 
+			if cfg.Server.AuthToken == "" && os.Getenv("SENTINEL_AUTH_TOKEN") == "" {
+				log.Warn("no auth token configured: REST validation routes and gRPC are unauthenticated and /v1/config admin endpoints are disabled; set server.auth_token or SENTINEL_AUTH_TOKEN")
+			}
+
 			restSrv, err := server.NewREST(cfg, val, c, cfgPath, log, notifier)
 			if err != nil {
 				return fmt.Errorf("init REST server: %w", err)

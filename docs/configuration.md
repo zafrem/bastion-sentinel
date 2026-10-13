@@ -385,9 +385,9 @@ Invalid YAML or unknown fields cause `config validate` to return a non-zero exit
 
 Set `server.auth_token` (or the `SENTINEL_AUTH_TOKEN` environment variable) to a long random value, for example `openssl rand -hex 32`.
 
-| Token configured? | `/v1/config`, `/v1/config/reload` | `/v1/validate*` | Health / metrics probes |
+| Token configured? | `/v1/config`, `/v1/config/reload` | `/v1/validate*` and gRPC `Validate*` RPCs | Health / metrics probes |
 |---|---|---|---|
 | No | **403** (admin endpoints disabled) | open (backward compatible) | open |
-| Yes | require `Authorization: Bearer <token>` | require `Authorization: Bearer <token>` | open |
+| Yes | require `Authorization: Bearer <token>` | require the token (gRPC: `authorization: Bearer <token>` metadata, **Unauthenticated** otherwise) | open |
 
-The probes `/health/live`, `/health/ready`, `/v1/health` and `/v1/metrics` never need a token. The token is compared in constant time and is never included in the `GET /v1/config` response. The gRPC port has no authentication yet; keep it on a private network.
+The probes `/health/live`, `/health/ready`, `/v1/health` and `/v1/metrics` never need a token. The token is compared in constant time and is never included in the `GET /v1/config` response. The gRPC `Health` RPC is public too; every other RPC, including both streaming RPCs, uses the same token check as REST. The gRPC port is plaintext (no TLS) in this build, so keep it on a private network.

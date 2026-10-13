@@ -275,6 +275,8 @@ Service: `bastion-rag.sentinel.v1.SentinelService`
 Proto file: `proto/sentinel.proto`  
 Max message size: 1 MB
 
+**Authentication.** When `server.auth_token` (or `SENTINEL_AUTH_TOKEN`) is set, every RPC except `Health` requires the token as call metadata, `authorization: Bearer <token>`, and fails with `UNAUTHENTICATED` otherwise. This covers the unary RPCs and both streaming RPCs. With no token configured the RPCs stay open. See [Authentication](configuration.md#authentication).
+
 ### Validate
 
 ```protobuf
