@@ -55,7 +55,7 @@ Two mechanisms — both rebuild the engine from the new config file and flush th
 ### Via REST endpoint
 
 ```bash
-curl -X POST http://localhost:8080/v1/config/reload
+curl -X POST -H "Authorization: Bearer $SENTINEL_AUTH_TOKEN" http://localhost:8080/v1/config/reload
 # {"status":"ok","message":"config reloaded","source":"/etc/sentinel/config.yaml"}
 ```
 

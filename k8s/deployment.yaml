@@ -31,6 +31,14 @@ spec:
         env:
         - name: SENTINEL_MODE
           value: "production"
+        # Bearer token for the REST API; enables /v1/config and /v1/config/reload.
+        # Create with: kubectl create secret generic bastion-sentinel-secrets --from-literal=auth-token=$(openssl rand -hex 32)
+        - name: SENTINEL_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: bastion-sentinel-secrets
+              key: auth-token
+              optional: true
         resources:
           requests:
             cpu: 500m

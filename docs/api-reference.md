@@ -4,6 +4,8 @@
 
 All request bodies must be `Content-Type: application/json`. All responses are JSON.
 
+**Authentication.** When `server.auth_token` (or `SENTINEL_AUTH_TOKEN`) is set, every route except the health and metrics probes requires `Authorization: Bearer <token>` and returns **401** otherwise. With no token configured, the validation routes are open and `/v1/config` and `/v1/config/reload` return **403**. See [Authentication](configuration.md#authentication).
+
 A `PASSED` verdict returns **HTTP 200**. A `BLOCKED` verdict returns **HTTP 403**. Errors return **HTTP 4xx / 5xx** with an `error` envelope.
 
 ---
@@ -228,13 +230,13 @@ sentinel_cache_misses_total 244444
 
 ### GET /v1/config
 
-Returns the active configuration as JSON.
+Returns the active configuration as JSON. Requires a configured auth token (403 otherwise) and `Authorization: Bearer <token>` (401 if missing or wrong). The token is never included in the response.
 
 ---
 
 ### POST /v1/config/reload
 
-Hot-reload the configuration from the file provided at server startup via `--config`. Returns a no-op message if the server was started without `--config`.
+Requires a configured auth token and `Authorization: Bearer <token>`, as for `GET /v1/config`. Hot-reload the configuration from the file provided at server startup via `--config`. Returns a no-op message if the server was started without `--config`.
 
 **Response (HTTP 200)**
 

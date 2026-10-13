@@ -110,7 +110,7 @@ Fixture files live in `tests/fixtures/` as JSONL. The `"timestamp":"NOW"` placeh
 | gRPC API (Validate, ValidateBatch, Health) | ✅ |
 | Redis caching with in-memory fallback | ✅ |
 | CLI (validate, try, testrun, interactive, config, server) | ✅ |
-| Hot config reload via `POST /v1/config/reload` | ✅ |
+| Hot config reload via `POST /v1/config/reload` (bearer-token protected; disabled without `server.auth_token`) | ✅ |
 | Payload size limits (10k chars / 4KB metadata) | ✅ |
 | Kubernetes health probes (`/health/live`, `/health/ready`) | ✅ |
 | Prometheus metrics with injection score histogram | ✅ |

@@ -17,6 +17,7 @@ The YAML file is merged on top of the defaults — only the fields you specify a
 server:
   rest_port: 8080        # HTTP listen port
   grpc_port: 9090        # gRPC listen port
+  auth_token: ""         # bearer token for the REST API (or env SENTINEL_AUTH_TOKEN); see Authentication below
 
 # ─── Prompt Injection Detection ───────────────────────────────────────────────
 prompt_injection:
@@ -377,3 +378,16 @@ sentinel-cli config show --config /path/to/config.yaml
 ```
 
 Invalid YAML or unknown fields cause `config validate` to return a non-zero exit code with the parse error.
+
+---
+
+## Authentication
+
+Set `server.auth_token` (or the `SENTINEL_AUTH_TOKEN` environment variable) to a long random value, for example `openssl rand -hex 32`.
+
+| Token configured? | `/v1/config`, `/v1/config/reload` | `/v1/validate*` | Health / metrics probes |
+|---|---|---|---|
+| No | **403** (admin endpoints disabled) | open (backward compatible) | open |
+| Yes | require `Authorization: Bearer <token>` | require `Authorization: Bearer <token>` | open |
+
+The probes `/health/live`, `/health/ready`, `/v1/health` and `/v1/metrics` never need a token. The token is compared in constant time and is never included in the `GET /v1/config` response. The gRPC port has no authentication yet; keep it on a private network.

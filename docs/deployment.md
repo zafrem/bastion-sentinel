@@ -145,8 +145,10 @@ Or via the REST endpoint (no SSH needed):
 
 ```bash
 kubectl port-forward svc/bastion-sentinel 8080:8080 -n bastion-rag &
-curl -X POST http://localhost:8080/v1/config/reload
+curl -X POST -H "Authorization: Bearer $SENTINEL_AUTH_TOKEN" http://localhost:8080/v1/config/reload
 ```
+
+`/v1/config/reload` needs `SENTINEL_AUTH_TOKEN` set on the pod (see the Secret reference in `k8s/deployment.yaml`); without it the endpoint returns 403.
 
 ### Canary rollout
 
