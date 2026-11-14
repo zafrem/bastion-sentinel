@@ -1,6 +1,6 @@
 # Compiled binary
-sentinel
-sentinel-cli
+/sentinel
+/sentinel-cli
 
 # Go build cache
 *.o
