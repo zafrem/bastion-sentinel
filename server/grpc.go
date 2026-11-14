@@ -293,8 +293,9 @@ func (g *GRPC) ValidateOutputStream(stream sentinelv1.SentinelService_ValidateOu
 			RequestID:   req.GetRequestId(),
 			LLMResponse: req.GetQuery(),
 			User: types.UserContext{
-				TenantID: meta["tenant_id"],
-				UserID:   meta["user_id"],
+				TenantID:    meta["tenant_id"],
+				UserID:      meta["user_id"],
+				AccessLevel: meta["access_level"],
 			},
 		})
 
@@ -308,8 +309,15 @@ func (g *GRPC) ValidateOutputStream(stream sentinelv1.SentinelService_ValidateOu
 			pbStatus = sentinelv1.ValidateResponse_BLOCKED
 		}
 		if err := stream.Send(&sentinelv1.ValidateResponse{
-			RequestId: req.GetRequestId(),
-			Status:    pbStatus,
+			RequestId:        req.GetRequestId(),
+			Status:           pbStatus,
+			ProcessingTimeMs: float32(outResp.ProcessingTimeMs),
+			ErrorMessage:     outResp.ErrorMessage,
+			ExtractedData: &sentinelv1.ExtractedData{
+				TenantId:     meta["tenant_id"],
+				UserId:       meta["user_id"],
+				CleanedQuery: outResp.ValidatedResponse,
+			},
 		}); err != nil {
 			return err
 		}

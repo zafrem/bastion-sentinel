@@ -55,7 +55,13 @@ func NewPIIDetector(cfg config.PIIReemergenceConfig) (*PIIDetector, error) {
 
 // Check scans response for PII patterns and returns all incidents found.
 func (d *PIIDetector) Check(response string) types.PIICheckResult {
-	var incidents []types.PIIIncident
+	return d.CheckWithMappings(response, nil)
+}
+
+// CheckWithMappings scans response for configured PII regexes and cross-references
+// any Vault token -> real_value mappings supplied in knownMappings.
+func (d *PIIDetector) CheckWithMappings(response string, knownMappings map[string]string) types.PIICheckResult {
+	var raw []types.PIIIncident
 
 	for _, rule := range d.rules {
 		matches := rule.re.FindAllStringIndex(response, -1)
@@ -64,7 +70,7 @@ func (d *PIIDetector) Check(response string) types.PIICheckResult {
 			if rule.severity == "critical" {
 				action = "redacted"
 			}
-			incidents = append(incidents, types.PIIIncident{
+			raw = append(raw, types.PIIIncident{
 				PIIType:       rule.name,
 				OriginalValue: response[loc[0]:loc[1]],
 				Start:         loc[0],
@@ -73,6 +79,40 @@ func (d *PIIDetector) Check(response string) types.PIICheckResult {
 			})
 		}
 	}
+
+	if len(knownMappings) > 0 {
+		tokens := make([]string, 0, len(knownMappings))
+		for tok := range knownMappings {
+			tokens = append(tokens, tok)
+		}
+		sort.Strings(tokens)
+		for _, tok := range tokens {
+			realVal := knownMappings[tok]
+			if realVal == "" {
+				continue
+			}
+			searchFrom := 0
+			for searchFrom < len(response) {
+				idx := strings.Index(response[searchFrom:], realVal)
+				if idx < 0 {
+					break
+				}
+				start := searchFrom + idx
+				end := start + len(realVal)
+				raw = append(raw, types.PIIIncident{
+					PIIType:       "vault_mapped_pii",
+					OriginalValue: realVal,
+					Start:         start,
+					End:           end,
+					ActionTaken:   "masked",
+					Replacement:   tok,
+				})
+				searchFrom = end
+			}
+		}
+	}
+
+	incidents := deduplicateIncidents(raw)
 
 	status := "PASSED"
 	if len(incidents) > 0 {
@@ -85,6 +125,41 @@ func (d *PIIDetector) Check(response string) types.PIICheckResult {
 	}
 }
 
+// deduplicateIncidents removes overlapping spans, preferring longer matches
+// and "redacted" (critical) actions over "masked" when spans share a start.
+func deduplicateIncidents(raw []types.PIIIncident) []types.PIIIncident {
+	if len(raw) <= 1 {
+		return raw
+	}
+	sorted := make([]types.PIIIncident, len(raw))
+	copy(sorted, raw)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].Start != sorted[j].Start {
+			return sorted[i].Start < sorted[j].Start
+		}
+		lenI := sorted[i].End - sorted[i].Start
+		lenJ := sorted[j].End - sorted[j].Start
+		if lenI != lenJ {
+			return lenI > lenJ
+		}
+		if sorted[i].ActionTaken != sorted[j].ActionTaken {
+			return sorted[i].ActionTaken == "redacted"
+		}
+		return sorted[i].Replacement != "" && sorted[j].Replacement == ""
+	})
+
+	out := make([]types.PIIIncident, 0, len(sorted))
+	lastEnd := -1
+	for _, inc := range sorted {
+		if inc.Start < lastEnd {
+			continue
+		}
+		out = append(out, inc)
+		lastEnd = inc.End
+	}
+	return out
+}
+
 // Sanitize applies replacements for every incident and returns the cleaned text
 // along with a log of modifications. Replacements are applied right-to-left so
 // byte offsets remain valid throughout.
@@ -93,8 +168,9 @@ func (d *PIIDetector) Sanitize(response string, incidents []types.PIIIncident) (
 		return response, nil
 	}
 
-	sorted := make([]types.PIIIncident, len(incidents))
-	copy(sorted, incidents)
+	dedup := deduplicateIncidents(incidents)
+	sorted := make([]types.PIIIncident, len(dedup))
+	copy(sorted, dedup)
 	sort.Slice(sorted, func(i, j int) bool {
 		return sorted[i].Start > sorted[j].Start
 	})
@@ -103,9 +179,15 @@ func (d *PIIDetector) Sanitize(response string, incidents []types.PIIIncident) (
 	var mods []types.Modification
 
 	for _, inc := range sorted {
-		replacement := "[REDACTED]"
-		if inc.ActionTaken == "masked" {
-			replacement = "[" + strings.ToUpper(inc.PIIType) + "]"
+		if inc.Start < 0 || inc.End > len(b) || inc.Start > inc.End {
+			continue
+		}
+		replacement := inc.Replacement
+		if replacement == "" {
+			replacement = "[REDACTED]"
+			if inc.ActionTaken == "masked" {
+				replacement = "[" + strings.ToUpper(inc.PIIType) + "]"
+			}
 		}
 		mods = append(mods, types.Modification{
 			Type:        inc.ActionTaken,

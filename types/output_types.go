@@ -53,21 +53,23 @@ type OutputValidationOptions struct {
 
 // OutputValidateRequest is the payload for Sentinel-OUT validation.
 type OutputValidateRequest struct {
-	RequestID   string
-	TraceID     string
-	LLMResponse string
-	User        UserContext
-	Retrieval   RetrievalContext
-	Options     OutputValidationOptions
+	RequestID     string
+	TraceID       string
+	LLMResponse   string
+	User          UserContext
+	Retrieval     RetrievalContext
+	Options       OutputValidationOptions
+	KnownMappings map[string]string // optional token -> real_value map from Vault
 }
 
 // PIIIncident describes a single PII finding in the LLM response.
 type PIIIncident struct {
-	PIIType       string // e.g. "email", "korean_rrn", "korean_name"
+	PIIType       string // e.g. "email", "korean_rrn", "korean_name", "vault_mapped_pii"
 	OriginalValue string
-	Start         int // byte offset in original response
-	End           int // byte offset in original response
+	Start         int    // byte offset in original response
+	End           int    // byte offset in original response
 	ActionTaken   string // "redacted", "masked", "blocked"
+	Replacement   string `json:"Replacement,omitempty"` // optional custom replacement (e.g. Vault token)
 }
 
 // PIICheckResult aggregates PII detection outcomes.

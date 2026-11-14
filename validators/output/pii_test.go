@@ -154,3 +154,26 @@ func TestHasCritical_False(t *testing.T) {
 		t.Error("expected HasCritical to return false for nil")
 	}
 }
+
+func TestPIIDetector_CheckWithMappings(t *testing.T) {
+	d := defaultPIIDetector(t)
+	response := "Customer John Doe has an account balance of $500."
+	mappings := map[string]string{
+		"CUST_NAME_a1b2c3d4e5f60001": "John Doe",
+	}
+	res := d.CheckWithMappings(response, mappings)
+	if res.Status != "VIOLATIONS_DETECTED" {
+		t.Fatalf("expected VIOLATIONS_DETECTED, got %s", res.Status)
+	}
+	sanitized, mods := d.Sanitize(response, res.Incidents)
+	if strings.Contains(sanitized, "John Doe") {
+		t.Errorf("expected John Doe to be replaced by token, got %q", sanitized)
+	}
+	if !strings.Contains(sanitized, "CUST_NAME_a1b2c3d4e5f60001") {
+		t.Errorf("expected Vault token in sanitized output, got %q", sanitized)
+	}
+	if len(mods) == 0 {
+		t.Error("expected modifications to be recorded")
+	}
+}
+

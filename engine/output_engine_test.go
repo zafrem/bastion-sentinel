@@ -159,3 +159,22 @@ func TestOutputEngine_InvalidConfig(t *testing.T) {
 		t.Error("expected error for invalid PII pattern in config")
 	}
 }
+
+func TestOutputEngine_VaultKnownMappings_Sanitized(t *testing.T) {
+	eng := newOutputEngine(t)
+	req := outputReq("Account holder Jane Smith requested a statement.")
+	req.KnownMappings = map[string]string{
+		"CUST_NAME_1122334455667788": "Jane Smith",
+	}
+	resp := eng.Validate(req)
+	if resp.Status != types.OutputStatusSanitized {
+		t.Fatalf("expected SANITIZED, got %s", resp.Status)
+	}
+	if strings.Contains(resp.ValidatedResponse, "Jane Smith") {
+		t.Errorf("expected Jane Smith to be replaced in ValidatedResponse, got %q", resp.ValidatedResponse)
+	}
+	if !strings.Contains(resp.ValidatedResponse, "CUST_NAME_1122334455667788") {
+		t.Errorf("expected replacement token in ValidatedResponse, got %q", resp.ValidatedResponse)
+	}
+}
+

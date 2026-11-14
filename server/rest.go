@@ -608,12 +608,13 @@ func nilSafe(s []string) []string {
 // ─── POST /v1/validate/output ─────────────────────────────────────────────────
 
 type outputValidateReq struct {
-	RequestID   string                      `json:"request_id"`
-	TraceID     string                      `json:"trace_id"`
-	LLMResponse string                      `json:"llm_response"`
-	User        types.UserContext            `json:"user"`
-	Retrieval   types.RetrievalContext      `json:"retrieval"`
-	Options     types.OutputValidationOptions `json:"options"`
+	RequestID     string                        `json:"request_id"`
+	TraceID       string                        `json:"trace_id"`
+	LLMResponse   string                        `json:"llm_response"`
+	User          types.UserContext             `json:"user"`
+	Retrieval     types.RetrievalContext        `json:"retrieval"`
+	Options       types.OutputValidationOptions `json:"options"`
+	KnownMappings map[string]string             `json:"known_mappings,omitempty"`
 }
 
 func (s *REST) handleOutputValidate(w http.ResponseWriter, r *http.Request) {
@@ -645,12 +646,13 @@ func (s *REST) handleOutputValidate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := outEng.Validate(types.OutputValidateRequest{
-		RequestID:   req.RequestID,
-		TraceID:     req.TraceID,
-		LLMResponse: req.LLMResponse,
-		User:        req.User,
-		Retrieval:   req.Retrieval,
-		Options:     req.Options,
+		RequestID:     req.RequestID,
+		TraceID:       req.TraceID,
+		LLMResponse:   req.LLMResponse,
+		User:          req.User,
+		Retrieval:     req.Retrieval,
+		Options:       req.Options,
+		KnownMappings: req.KnownMappings,
 	})
 
 	s.log.Info("validate_output",
@@ -878,12 +880,13 @@ func (s *REST) handleOutputWithMappings(w http.ResponseWriter, r *http.Request) 
 	}
 
 	resp := outEng.Validate(types.OutputValidateRequest{
-		RequestID:   req.RequestID,
-		TraceID:     req.TraceID,
-		LLMResponse: req.LLMResponse,
-		User:        req.User,
-		Retrieval:   req.Retrieval,
-		Options:     req.Options,
+		RequestID:     req.RequestID,
+		TraceID:       req.TraceID,
+		LLMResponse:   req.LLMResponse,
+		User:          req.User,
+		Retrieval:     req.Retrieval,
+		Options:       req.Options,
+		KnownMappings: req.KnownMappings,
 	})
 
 	// Deep PII check: scan the validated response for real values from Vault mappings.
@@ -996,12 +999,13 @@ func (s *REST) handleOutputBatch(w http.ResponseWriter, r *http.Request) {
 				req.RequestID = fmt.Sprintf("out-batch-%d", idx+1)
 			}
 			resp := outEng.Validate(types.OutputValidateRequest{
-				RequestID:   req.RequestID,
-				TraceID:     req.TraceID,
-				LLMResponse: req.LLMResponse,
-				User:        req.User,
-				Retrieval:   req.Retrieval,
-				Options:     req.Options,
+				RequestID:     req.RequestID,
+				TraceID:       req.TraceID,
+				LLMResponse:   req.LLMResponse,
+				User:          req.User,
+				Retrieval:     req.Retrieval,
+				Options:       req.Options,
+				KnownMappings: req.KnownMappings,
 			})
 			mu.Lock()
 			results[idx] = resp

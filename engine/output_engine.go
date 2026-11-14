@@ -62,7 +62,7 @@ func (e *OutputEngine) Validate(req types.OutputValidateRequest) types.OutputVal
 	// ── PII re-emergence ───────────────────────────────────────────────────────
 	var piiResult types.PIICheckResult
 	if e.cfg.PIIReemergence.Enabled && opts.CheckPIIReemergence {
-		piiResult = e.pii.Check(req.LLMResponse)
+		piiResult = e.pii.CheckWithMappings(req.LLMResponse, req.KnownMappings)
 	} else {
 		piiResult = types.PIICheckResult{Status: "SKIPPED"}
 	}
