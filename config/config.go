@@ -65,6 +65,13 @@ type ServerConfig struct {
 	// and validation routes stay open. SENTINEL_AUTH_TOKEN overrides an empty
 	// value. Never serialised: GET /v1/config must not echo it.
 	AuthToken string `yaml:"auth_token" json:"-"`
+
+	// gRPC TLS. Set grpc_tls_cert and grpc_tls_key (PEM files) to serve gRPC over TLS; the files are
+	// re-read when they change, so rotation needs no restart. Setting grpc_tls_client_ca as well
+	// requires clients to present a certificate signed by it (mutual TLS). All empty = plaintext.
+	GRPCTLSCert     string `yaml:"grpc_tls_cert"`
+	GRPCTLSKey      string `yaml:"grpc_tls_key"`
+	GRPCTLSClientCA string `yaml:"grpc_tls_client_ca"`
 }
 
 type PromptInjectionConfig struct {

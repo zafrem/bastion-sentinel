@@ -712,6 +712,16 @@ func buildServerCmd() *cobra.Command {
 				return fmt.Errorf("init REST server: %w", err)
 			}
 			grpcSrv := server.NewGRPC(cfg, val, c, cfgPath, log, notifier)
+			if err := grpcSrv.EnableTLS(cfg.Server.GRPCTLSCert, cfg.Server.GRPCTLSKey, cfg.Server.GRPCTLSClientCA); err != nil {
+				return fmt.Errorf("gRPC TLS: %w", err)
+			}
+			switch {
+			case grpcSrv.TLSEnabled():
+				log.Info("gRPC TLS enabled", "mutual_tls", cfg.Server.GRPCTLSClientCA != "")
+			case cfg.Server.AuthToken != "" || os.Getenv("SENTINEL_AUTH_TOKEN") != "":
+				log.Warn("gRPC is plaintext but a bearer token is required: the token travels unencrypted; " +
+					"set server.grpc_tls_cert and server.grpc_tls_key, or terminate TLS in front of the gRPC port")
+			}
 
 			stop := make(chan os.Signal, 1)
 			sighup := make(chan os.Signal, 1)

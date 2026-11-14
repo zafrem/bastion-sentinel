@@ -18,6 +18,9 @@ server:
   rest_port: 8080        # HTTP listen port
   grpc_port: 9090        # gRPC listen port
   auth_token: ""         # bearer token for the REST API (or env SENTINEL_AUTH_TOKEN); see Authentication below
+  # grpc_tls_cert: ""    # gRPC over TLS (PEM files); see gRPC TLS below
+  # grpc_tls_key: ""
+  # grpc_tls_client_ca: ""   # set to require client certificates (mutual TLS)
 
 # ─── Prompt Injection Detection ───────────────────────────────────────────────
 prompt_injection:
@@ -390,4 +393,25 @@ Set `server.auth_token` (or the `SENTINEL_AUTH_TOKEN` environment variable) to a
 | No | **403** (admin endpoints disabled) | open (backward compatible) | open |
 | Yes | require `Authorization: Bearer <token>` | require the token (gRPC: `authorization: Bearer <token>` metadata, **Unauthenticated** otherwise) | open |
 
-The probes `/health/live`, `/health/ready`, `/v1/health` and `/v1/metrics` never need a token. The token is compared in constant time and is never included in the `GET /v1/config` response. The gRPC `Health` RPC is public too; every other RPC, including both streaming RPCs, uses the same token check as REST. The gRPC port is plaintext (no TLS) in this build, so keep it on a private network.
+The probes `/health/live`, `/health/ready`, `/v1/health` and `/v1/metrics` never need a token. The token is compared in constant time and is never included in the `GET /v1/config` response. The gRPC `Health` RPC is public too; every other RPC, including both streaming RPCs, uses the same token check as REST. Without gRPC TLS (below) that token travels in plaintext on the gRPC port.
+
+---
+
+## gRPC TLS
+
+By default the gRPC port is plaintext. Set a certificate and key (PEM files) to serve it over TLS:
+
+```yaml
+server:
+  grpc_tls_cert: /etc/sentinel/tls/server.pem
+  grpc_tls_key:  /etc/sentinel/tls/server.key
+  grpc_tls_client_ca: /etc/sentinel/tls/ca.pem   # optional: require client certificates (mutual TLS)
+```
+
+- `grpc_tls_cert` and `grpc_tls_key` must be set together; `grpc_tls_client_ca` needs both. A missing, unreadable, mismatched or empty file makes Sentinel **refuse to start**.
+- With `grpc_tls_client_ca`, every client must present a certificate signed by that CA; others are rejected during the handshake.
+- The certificate files are re-read when they change, so rotating them (for example with cert-manager) needs no restart. If a replacement cannot be loaded, the previous working certificate keeps being served and a warning is logged.
+- TLS 1.2 or newer. The bearer token (see Authentication) still applies inside the TLS connection.
+- When a token is configured but gRPC is plaintext, Sentinel logs a warning at startup that the token travels unencrypted.
+- These settings cover the gRPC port only. For the REST port, terminate TLS in front of Sentinel.
+- To try it locally, run `scripts/gen-dev-certs.sh` from the repository root (development certificates only).

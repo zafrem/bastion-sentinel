@@ -72,6 +72,7 @@ type GRPC struct {
 	cfgPath   string
 	started   time.Time
 	srv       *grpc.Server
+	tls       bool
 	log       *slog.Logger
 	notifier  *Notifier
 	outputEng *engine.OutputEngine
@@ -100,14 +101,40 @@ func NewGRPC(cfg *config.Config, val cache.Validator, c cache.Cache, cfgPath str
 		pub:       pub,
 		hm:        hooks.New(),
 	}
-	g.srv = grpc.NewServer(
-		grpc.MaxRecvMsgSize(1<<20),
-		grpc.ChainUnaryInterceptor(g.authUnaryInterceptor, grpcTraceInterceptor),
-		grpc.ChainStreamInterceptor(g.authStreamInterceptor),
-	)
-	sentinelv1.RegisterSentinelServiceServer(g.srv, g)
+	g.srv = g.newServer()
 	return g
 }
+
+// newServer builds the gRPC server with its interceptors (and any extra options, such as TLS).
+func (g *GRPC) newServer(extra ...grpc.ServerOption) *grpc.Server {
+	opts := append([]grpc.ServerOption{
+		grpc.MaxRecvMsgSize(1 << 20),
+		grpc.ChainUnaryInterceptor(g.authUnaryInterceptor, grpcTraceInterceptor),
+		grpc.ChainStreamInterceptor(g.authStreamInterceptor),
+	}, extra...)
+	srv := grpc.NewServer(opts...)
+	sentinelv1.RegisterSentinelServiceServer(srv, g)
+	return srv
+}
+
+// EnableTLS serves gRPC over TLS using the given PEM files. With all three empty it does nothing
+// and the server stays plaintext. clientCAFile (optional) requires client certificates (mutual TLS).
+// Call it before serving; it returns an error for incomplete or unreadable configuration.
+func (g *GRPC) EnableTLS(certFile, keyFile, clientCAFile string) error {
+	creds, err := serverTLSCredentials(certFile, keyFile, clientCAFile)
+	if err != nil {
+		return err
+	}
+	if creds == nil {
+		return nil
+	}
+	g.srv = g.newServer(grpc.Creds(creds))
+	g.tls = true
+	return nil
+}
+
+// TLSEnabled reports whether EnableTLS turned TLS on.
+func (g *GRPC) TLSEnabled() bool { return g.tls }
 
 func (g *GRPC) Addr() string {
 	return fmt.Sprintf(":%d", g.cfg.Server.GRPCPort)
