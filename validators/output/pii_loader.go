@@ -32,14 +32,20 @@ type PIIExternalConfig struct {
 func LoadExternalPatterns(dir string) ([]config.PIIPatternConfig, error) {
 	var patterns []config.PIIPatternConfig
 
-	// If dir is relative, attempt to resolve it from the project root
+	// If dir is relative, attempt to resolve it from the module or workspace root.
 	if !filepath.IsAbs(dir) {
 		cwd, err := os.Getwd()
 		if err == nil {
 			for cwd != "/" {
 				if _, err := os.Stat(filepath.Join(cwd, "go.mod")); err == nil {
-					dir = filepath.Join(cwd, dir)
-					break
+					if fi, err := os.Stat(filepath.Join(cwd, dir)); err == nil && fi.IsDir() {
+						dir = filepath.Join(cwd, dir)
+						break
+					}
+					if fi, err := os.Stat(filepath.Join(cwd, "sentinel", dir)); err == nil && fi.IsDir() {
+						dir = filepath.Join(cwd, "sentinel", dir)
+						break
+					}
 				}
 				cwd = filepath.Dir(cwd)
 			}
