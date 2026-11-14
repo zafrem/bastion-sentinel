@@ -20,7 +20,7 @@ type Engine struct {
 }
 
 func New(cfg *config.Config) (*Engine, error) {
-	scorer := &ml.OnnxStub{}
+	scorer := ml.NewScorer(cfg.PromptInjection.MLModel)
 
 	pd, err := prompt.New(cfg.PromptInjection, scorer)
 	if err != nil {
