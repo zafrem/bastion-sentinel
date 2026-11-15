@@ -83,8 +83,8 @@ func (h *HeuristicScorer) Score(query string) (float64, error) {
 	return math.Round(prob*10000) / 10000, nil
 }
 
-// NewScorer returns a HeuristicScorer when ML scoring is enabled (or when a model path
-// is configured), and an OnnxStub when disabled.
+// NewScorer returns a HeuristicScorer when ML scoring is enabled and an OnnxStub when it is
+// disabled. The configured model path is not used: the heuristic scorer needs no model file.
 func NewScorer(cfg config.MLModelConfig) Scorer {
 	if cfg.Enabled {
 		return &HeuristicScorer{}

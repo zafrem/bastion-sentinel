@@ -90,15 +90,21 @@ func TestPIIDetector_CreditCard(t *testing.T) {
 
 func TestPIIDetector_LeakedToken(t *testing.T) {
 	d := defaultPIIDetector(t)
-	result := d.Check("The record for USER_DATA_abc123def456gh78 shows...")
+	text := "The record for USER_DATA_abc123def456gh78 shows..."
+	result := d.Check(text)
+	// Overlapping detectors (leaked_token and the generic high-entropy token rule) cover the same span;
+	// overlap resolution keeps one incident for it, so assert the token is flagged and removed.
 	found := false
 	for _, inc := range result.Incidents {
-		if inc.PIIType == "leaked_token" {
+		if inc.OriginalValue == "USER_DATA_abc123def456gh78" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected leaked_token incident")
+		t.Errorf("expected an incident covering the leaked token, got %+v", result.Incidents)
+	}
+	if out, _ := d.Sanitize(text, result.Incidents); strings.Contains(out, "abc123def456gh78") {
+		t.Errorf("leaked token survived sanitising: %q", out)
 	}
 }
 
@@ -177,3 +183,28 @@ func TestPIIDetector_CheckWithMappings(t *testing.T) {
 	}
 }
 
+
+// A Vault-mapped value that partially overlaps a longer regex match must not leave the tail exposed.
+func TestPIIDetector_PartialOverlapDoesNotLeakTail(t *testing.T) {
+	d := defaultPIIDetector(t)
+	resp := "Mail jane.smith@example.com now"
+	res := d.CheckWithMappings(resp, map[string]string{"TOK_1": "Mail jane.smith"})
+	out, _ := d.Sanitize(resp, res.Incidents)
+	if strings.Contains(out, "example.com") || strings.Contains(out, "@") {
+		t.Errorf("tail of overlapping match leaked: %q", out)
+	}
+	if !strings.HasSuffix(out, " now") {
+		t.Errorf("surrounding text was damaged: %q", out)
+	}
+}
+
+// When the mapped value fully contains a regex match, its Vault token is still used.
+func TestPIIDetector_MappingCoveringMatchKeepsToken(t *testing.T) {
+	d := defaultPIIDetector(t)
+	resp := "Owner: jane@example.com (verified)"
+	res := d.CheckWithMappings(resp, map[string]string{"TOK_2": "jane@example.com"})
+	out, _ := d.Sanitize(resp, res.Incidents)
+	if strings.Contains(out, "example.com") || !strings.Contains(out, "TOK_2") {
+		t.Errorf("expected token replacement, got %q", out)
+	}
+}

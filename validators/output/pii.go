@@ -112,7 +112,7 @@ func (d *PIIDetector) CheckWithMappings(response string, knownMappings map[strin
 		}
 	}
 
-	incidents := deduplicateIncidents(raw)
+	incidents := deduplicateIncidents(response, raw)
 
 	status := "PASSED"
 	if len(incidents) > 0 {
@@ -125,9 +125,70 @@ func (d *PIIDetector) CheckWithMappings(response string, knownMappings map[strin
 	}
 }
 
-// deduplicateIncidents removes overlapping spans, preferring longer matches
-// and "redacted" (critical) actions over "masked" when spans share a start.
-func deduplicateIncidents(raw []types.PIIIncident) []types.PIIIncident {
+// deduplicateIncidents resolves overlapping spans without leaving any covered byte unmasked.
+//
+// Vault-mapped spans (those carrying a token Replacement) are authoritative: they keep their token, and
+// every other span is trimmed to the bytes they do not cover, so no part of a longer regex match is
+// left exposed. The remaining spans are grouped by overlap; if one span covers its whole group it wins
+// (the longer match, and "redacted" over "masked" on ties), otherwise the group is merged into the
+// union of its spans, redacted if any member was.
+func deduplicateIncidents(response string, raw []types.PIIIncident) []types.PIIIncident {
+	if len(raw) <= 1 {
+		return raw
+	}
+	var mapped, other []types.PIIIncident
+	for _, inc := range raw {
+		if inc.Replacement != "" {
+			mapped = append(mapped, inc)
+		} else {
+			other = append(other, inc)
+		}
+	}
+	if len(mapped) == 0 {
+		return resolveOverlaps(response, other)
+	}
+	fixed := resolveOverlaps(response, mapped)
+	var rest []types.PIIIncident
+	for _, inc := range other {
+		rest = append(rest, trimAround(response, inc, fixed)...)
+	}
+	out := append(fixed, resolveOverlaps(response, rest)...)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Start < out[j].Start })
+	return out
+}
+
+// trimAround returns the parts of inc not covered by any span in fixed (sorted, non-overlapping).
+func trimAround(response string, inc types.PIIIncident, fixed []types.PIIIncident) []types.PIIIncident {
+	pieces := []types.PIIIncident{inc}
+	for _, f := range fixed {
+		var next []types.PIIIncident
+		for _, p := range pieces {
+			if f.End <= p.Start || f.Start >= p.End {
+				next = append(next, p)
+				continue
+			}
+			if p.Start < f.Start {
+				next = append(next, subSpan(response, p, p.Start, f.Start))
+			}
+			if f.End < p.End {
+				next = append(next, subSpan(response, p, f.End, p.End))
+			}
+		}
+		pieces = next
+	}
+	return pieces
+}
+
+func subSpan(response string, p types.PIIIncident, start, end int) types.PIIIncident {
+	p.Start, p.End = start, end
+	if start >= 0 && end <= len(response) {
+		p.OriginalValue = response[start:end]
+	}
+	return p
+}
+
+// resolveOverlaps groups overlapping spans and keeps the covering span or the union of each group.
+func resolveOverlaps(response string, raw []types.PIIIncident) []types.PIIIncident {
 	if len(raw) <= 1 {
 		return raw
 	}
@@ -149,15 +210,42 @@ func deduplicateIncidents(raw []types.PIIIncident) []types.PIIIncident {
 	})
 
 	out := make([]types.PIIIncident, 0, len(sorted))
-	lastEnd := -1
-	for _, inc := range sorted {
-		if inc.Start < lastEnd {
-			continue
+	for i := 0; i < len(sorted); {
+		group := []types.PIIIncident{sorted[i]}
+		end := sorted[i].End
+		j := i + 1
+		for j < len(sorted) && sorted[j].Start < end {
+			group = append(group, sorted[j])
+			if sorted[j].End > end {
+				end = sorted[j].End
+			}
+			j++
 		}
-		out = append(out, inc)
-		lastEnd = inc.End
+		i = j
+		out = append(out, mergeGroup(response, group, end))
 	}
 	return out
+}
+
+// mergeGroup collapses a group of overlapping incidents (sorted by start, then longest first).
+func mergeGroup(response string, group []types.PIIIncident, end int) types.PIIIncident {
+	primary := group[0]
+	if len(group) == 1 || primary.End == end {
+		return primary // one span covers the whole group
+	}
+	merged := types.PIIIncident{PIIType: primary.PIIType, Start: primary.Start, End: end, ActionTaken: "masked"}
+	for _, g := range group {
+		if g.ActionTaken == "redacted" {
+			merged.ActionTaken = "redacted"
+		}
+		if g.End-g.Start > merged.End-merged.Start {
+			merged.PIIType = g.PIIType
+		}
+	}
+	if merged.Start >= 0 && merged.End <= len(response) {
+		merged.OriginalValue = response[merged.Start:merged.End]
+	}
+	return merged
 }
 
 // Sanitize applies replacements for every incident and returns the cleaned text
@@ -168,7 +256,7 @@ func (d *PIIDetector) Sanitize(response string, incidents []types.PIIIncident) (
 		return response, nil
 	}
 
-	dedup := deduplicateIncidents(incidents)
+	dedup := deduplicateIncidents(response, incidents)
 	sorted := make([]types.PIIIncident, len(dedup))
 	copy(sorted, dedup)
 	sort.Slice(sorted, func(i, j int) bool {
