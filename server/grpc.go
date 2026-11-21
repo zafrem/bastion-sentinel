@@ -200,9 +200,7 @@ func (g *GRPC) Validate(ctx context.Context, req *sentinelv1.ValidateRequest) (*
 
 	resp := eng.Validate(toEngineRequest(req))
 	setNoticeTrailer(ctx, resp.Notice)
-	requestsTotal.WithLabelValues(string(resp.Status)).Inc()
-	requestDurationMs.Observe(resp.ProcessingTimeMs)
-	injectionScore.Observe(resp.PromptCheck.RiskScore)
+	observeInput(string(resp.Status), resp.Profile, resp.ProcessingTimeMs, resp.PromptCheck.RiskScore)
 	g.log.Info("validate",
 		"request_id", resp.RequestID,
 		"status", resp.Status,
@@ -270,8 +268,7 @@ func (g *GRPC) ValidateInputStream(stream sentinelv1.SentinelService_ValidateInp
 			return err // io.EOF → normal stream close
 		}
 		resp := eng.Validate(toEngineRequest(req))
-		requestsTotal.WithLabelValues(string(resp.Status)).Inc()
-		injectionScore.Observe(resp.PromptCheck.RiskScore)
+		observeInput(string(resp.Status), resp.Profile, resp.ProcessingTimeMs, resp.PromptCheck.RiskScore)
 
 		tc := traceFromGRPCCtx(stream.Context())
 		tc.RequestID = resp.RequestID
@@ -309,7 +306,7 @@ func (g *GRPC) ValidateOutputStream(stream sentinelv1.SentinelService_ValidateOu
 		if meta == nil {
 			meta = map[string]string{}
 		}
-		outResp := outEng.Validate(types.OutputValidateRequest{
+		outResp := validateOutput(outEng, types.OutputValidateRequest{
 			RequestID:   req.GetRequestId(),
 			LLMResponse: req.GetQuery(),
 			User: types.UserContext{

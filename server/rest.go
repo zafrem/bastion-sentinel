@@ -284,9 +284,7 @@ func (s *REST) handleValidate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	requestsTotal.WithLabelValues(string(resp.Status)).Inc()
-	requestDurationMs.Observe(resp.ProcessingTimeMs)
-	injectionScore.Observe(resp.PromptCheck.RiskScore)
+	observeInput(string(resp.Status), resp.Profile, resp.ProcessingTimeMs, resp.PromptCheck.RiskScore)
 	s.log.Info("validate",
 		"request_id", logSafe(resp.RequestID),
 		"status", resp.Status,
@@ -405,7 +403,7 @@ func (s *REST) handleBatch(w http.ResponseWriter, r *http.Request) {
 
 	passed, blocked := 0, 0
 	for _, res := range results {
-		requestsTotal.WithLabelValues(res.Status).Inc()
+		requestsTotal.WithLabelValues(res.Status, res.Profile).Inc()
 		if res.Status == string(types.StatusPassed) {
 			passed++
 		} else {
@@ -679,7 +677,7 @@ func (s *REST) handleOutputValidate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := outEng.Validate(types.OutputValidateRequest{
+	resp := validateOutput(outEng, types.OutputValidateRequest{
 		RequestID:     req.RequestID,
 		TraceID:       req.TraceID,
 		LLMResponse:   req.LLMResponse,
@@ -916,7 +914,7 @@ func (s *REST) handleOutputWithMappings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	resp := outEng.Validate(types.OutputValidateRequest{
+	resp := validateOutput(outEng, types.OutputValidateRequest{
 		RequestID:     req.RequestID,
 		TraceID:       req.TraceID,
 		LLMResponse:   req.LLMResponse,
@@ -1038,7 +1036,7 @@ func (s *REST) handleOutputBatch(w http.ResponseWriter, r *http.Request) {
 			if req.RequestID == "" {
 				req.RequestID = fmt.Sprintf("out-batch-%d", idx+1)
 			}
-			resp := outEng.Validate(types.OutputValidateRequest{
+			resp := validateOutput(outEng, types.OutputValidateRequest{
 				RequestID:     req.RequestID,
 				TraceID:       req.TraceID,
 				LLMResponse:   req.LLMResponse,

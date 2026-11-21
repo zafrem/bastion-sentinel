@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -249,4 +251,51 @@ func TestGRPC_OutputStreamCarriesTheProfile(t *testing.T) {
 	if st.out[1].GetStatus() != sentinelv1.ValidateResponse_BLOCKED {
 		t.Errorf("public min_length 20 should block a 16-char answer, got %v", st.out[1].GetStatus())
 	}
+}
+
+func scrape(t *testing.T, srv *server.REST) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/metrics", nil))
+	return rec.Body.String()
+}
+
+func TestMetrics_CountedPerProfile(t *testing.T) {
+	srv, _ := restFrom(t, audiences)
+	count := func(m, labels string) float64 { return metricValue(scrape(t, srv), m, labels) }
+	inStaff := count("sentinel_requests_total", `profile="staff",status="PASSED"`)
+	inPublic := count("sentinel_requests_total", `profile="public",status="BLOCKED"`)
+	outPublic := count("sentinel_output_requests_total", `profile="public",status="BLOCKED"`)
+	durStaff := count("sentinel_request_duration_ms_count", `profile="staff"`)
+
+	post(t, srv, "/v1/sentinel/validate/input", inputBody("corp", borderline))
+	post(t, srv, "/v1/sentinel/validate/input", inputBody("someone", borderline))
+	post(t, srv, "/v1/sentinel/validate/output", map[string]any{"request_id": "o", "llm_response": "Yes, it is open.",
+		"user": map[string]any{"UserID": "u", "TenantID": "someone", "AccessLevel": "full"}})
+
+	for _, c := range []struct {
+		m, l string
+		was  float64
+	}{
+		{"sentinel_requests_total", `profile="staff",status="PASSED"`, inStaff},
+		{"sentinel_requests_total", `profile="public",status="BLOCKED"`, inPublic},
+		{"sentinel_output_requests_total", `profile="public",status="BLOCKED"`, outPublic},
+		{"sentinel_request_duration_ms_count", `profile="staff"`, durStaff},
+	} {
+		if got := count(c.m, c.l); got != c.was+1 {
+			t.Errorf("%s{%s}: %v -> %v, want +1", c.m, c.l, c.was, got)
+		}
+	}
+}
+
+// metricValue reads one sample from Prometheus text output; Prometheus exposes labels alphabetically.
+func metricValue(body, name, labels string) float64 {
+	for _, ln := range strings.Split(body, "\n") {
+		if strings.HasPrefix(ln, name+"{") && strings.Contains(ln, labels) {
+			f := strings.Fields(ln)
+			v, _ := strconv.ParseFloat(f[len(f)-1], 64)
+			return v
+		}
+	}
+	return 0
 }

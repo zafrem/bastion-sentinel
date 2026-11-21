@@ -86,11 +86,19 @@ Scrape target: `GET http://<host>:8080/v1/metrics`
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `sentinel_requests_total{status}` | Counter | Total requests by status (PASSED / BLOCKED / ERROR) |
-| `sentinel_request_duration_ms` | Histogram | End-to-end processing time in milliseconds |
-| `sentinel_injection_score` | Histogram | Distribution of prompt injection risk scores |
-| `sentinel_cache_hits_total` | Counter | Cache hits |
-| `sentinel_cache_misses_total` | Counter | Cache misses |
+| `sentinel_requests_total{status,profile}` | Counter | Input validations by status (PASSED / BLOCKED / ERROR) and policy profile |
+| `sentinel_output_requests_total{status,profile}` | Counter | Output validations by status and policy profile |
+| `sentinel_request_duration_ms{profile}` | Histogram | Input processing time in milliseconds |
+| `sentinel_injection_score{profile}` | Histogram | Distribution of prompt injection risk scores |
+| `sentinel_cache_hits_total` | Counter | Cache hits (declared, not yet recorded) |
+| `sentinel_cache_misses_total` | Counter | Cache misses (declared, not yet recorded) |
+
+The `profile` label is the policy profile that applied (see the `policy` section of the configuration reference).
+It is empty when no policy is configured, which Prometheus treats as the label being absent, so existing queries
+and dashboards keep working. Its values are the profile names you define, so cardinality is bounded by the
+config. Quantile queries that did not aggregate now return one series per profile; use
+`histogram_quantile(0.95, sum by (le) (rate(sentinel_request_duration_ms_bucket[5m])))` for the old overall view
+or `sum by (le, profile)` to compare audiences.
 
 Standard Go runtime metrics (`go_goroutines`, `go_memstats_*`, etc.) are also exported by the default Prometheus registry.
 
