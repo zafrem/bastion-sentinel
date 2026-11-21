@@ -90,8 +90,11 @@ Scrape target: `GET http://<host>:8080/v1/metrics`
 | `sentinel_output_requests_total{status,profile}` | Counter | Output validations by status and policy profile |
 | `sentinel_request_duration_ms{profile}` | Histogram | Input processing time in milliseconds |
 | `sentinel_injection_score{profile}` | Histogram | Distribution of prompt injection risk scores |
-| `sentinel_cache_hits_total` | Counter | Cache hits (declared, not yet recorded) |
-| `sentinel_cache_misses_total` | Counter | Cache misses (declared, not yet recorded) |
+| `sentinel_cache_hits_total{profile}` | Counter | Input validations answered from the cache |
+| `sentinel_cache_misses_total{profile}` | Counter | Input validations that ran the engine (including ones that returned an error, which are not cached) |
+
+Hit ratio: `sum(rate(sentinel_cache_hits_total[5m])) / (sum(rate(sentinel_cache_hits_total[5m])) + sum(rate(sentinel_cache_misses_total[5m])))`.
+A reload flushes the cache, so expect a burst of misses after one. Output validation is not cached.
 
 The `profile` label is the policy profile that applied (see the `policy` section of the configuration reference).
 It is empty when no policy is configured, which Prometheus treats as the label being absent, so existing queries

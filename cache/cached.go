@@ -38,6 +38,7 @@ func (cv *CachedValidator) Validate(req types.ValidateRequest) types.ValidateRes
 	if cached, ok := cv.cache.Get(key); ok {
 		// preserve the caller's request ID in the returned response
 		cached.RequestID = req.RequestID
+		cacheHitsTotal.WithLabelValues(cached.Profile).Inc()
 		return cached
 	}
 
@@ -46,6 +47,7 @@ func (cv *CachedValidator) Validate(req types.ValidateRequest) types.ValidateRes
 	cv.mu.RUnlock()
 
 	resp := inner.Validate(req)
+	cacheMissesTotal.WithLabelValues(resp.Profile).Inc()
 
 	if resp.Status != types.StatusError {
 		cv.cache.Set(key, resp, cv.ttl)

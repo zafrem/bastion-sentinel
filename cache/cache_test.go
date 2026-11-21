@@ -1,6 +1,7 @@
 package cache_test
 
 import (
+	"github.com/prometheus/client_golang/prometheus"
 	"testing"
 	"time"
 
@@ -189,4 +190,53 @@ type countingValidator struct {
 func (v *countingValidator) Validate(_ types.ValidateRequest) types.ValidateResponse {
 	*v.calls++
 	return types.ValidateResponse{Status: v.status}
+}
+
+type profileValidator struct{ profile string }
+
+func (v profileValidator) Validate(req types.ValidateRequest) types.ValidateResponse {
+	return types.ValidateResponse{RequestID: req.RequestID, Status: types.StatusPassed, Profile: v.profile}
+}
+
+// counter reads one labelled sample from the default registry, which is what /v1/metrics serves.
+func counter(t *testing.T, name, profile string) float64 {
+	t.Helper()
+	mfs, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mf := range mfs {
+		if mf.GetName() != name {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetName() == "profile" && l.GetValue() == profile {
+					return m.GetCounter().GetValue()
+				}
+			}
+		}
+	}
+	return 0
+}
+
+func TestCachedValidator_CountsHitsAndMissesPerProfile(t *testing.T) {
+	c, _ := cache.New(config.CacheConfig{Enabled: true, Type: "memory"})
+	cv := cache.NewCached(profileValidator{profile: "p1"}, c, time.Minute)
+	req := types.ValidateRequest{RequestID: "r", Query: "metrics-count-unique-q", Metadata: map[string]string{"tenant_id": "t"}}
+
+	hits := counter(t, "sentinel_cache_hits_total", "p1")
+	misses := counter(t, "sentinel_cache_misses_total", "p1")
+	cv.Validate(req) // miss
+	cv.Validate(req) // hit
+	cv.Validate(req) // hit
+	if got := counter(t, "sentinel_cache_hits_total", "p1") - hits; got != 2 {
+		t.Errorf("hits +%v, want +2", got)
+	}
+	if got := counter(t, "sentinel_cache_misses_total", "p1") - misses; got != 1 {
+		t.Errorf("misses +%v, want +1", got)
+	}
+	if other := counter(t, "sentinel_cache_hits_total", "p2"); other != 0 {
+		t.Errorf("another profile's counter moved: %v", other)
+	}
 }

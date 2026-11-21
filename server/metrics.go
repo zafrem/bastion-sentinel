@@ -23,18 +23,6 @@ var (
 		Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 25, 50, 100},
 	}, []string{"profile"})
 
-	cacheHitsTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "sentinel",
-		Name:      "cache_hits_total",
-		Help:      "Total cache hits.",
-	})
-
-	cacheMissesTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "sentinel",
-		Name:      "cache_misses_total",
-		Help:      "Total cache misses.",
-	})
-
 	injectionScore = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "sentinel",
 		Name:      "injection_score",
