@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/zafrem/bastion-sentinel/config"
 	"github.com/zafrem/bastion-sentinel/ml"
 	"github.com/zafrem/bastion-sentinel/types"
-	"golang.org/x/text/unicode/norm"
 )
 
 // Detector runs prompt injection detection using regex patterns, keyword matching,
@@ -18,16 +18,57 @@ type Detector struct {
 	cfg     config.PromptInjectionConfig
 	regexes []*regexp.Regexp
 	scorer  ml.Scorer
+	// severity maps a rule ID to its severity, for scoring.
+	severity map[string]string
+}
+
+// ruleWeight is how much a single matching rule counts towards the risk score.
+// critical and high rules decide on their own, as they always have. A medium rule
+// is only a hint (for example "for educational purposes" or a mention of the topic):
+// alone it stays under the block threshold, and it takes corroboration to block.
+// A rule with no or an unknown severity is treated as high, so custom configs keep
+// their old behaviour.
+func ruleWeight(severity string) float64 {
+	switch strings.ToLower(severity) {
+	case "low":
+		return 0.25
+	case "medium":
+		return 0.5
+	default:
+		return 1.0
+	}
+}
+
+// ruleScore combines the weights of every matched rule: the strongest one, plus a
+// quarter of the next ones, capped at 1. Two medium rules together reach 0.75.
+func ruleScore(weights []float64) float64 {
+	if len(weights) == 0 {
+		return 0
+	}
+	top, rest := 0.0, 0.0
+	for _, w := range weights {
+		if w > top {
+			rest += top
+			top = w
+		} else {
+			rest += w
+		}
+	}
+	return math.Min(1.0, top+0.25*rest)
 }
 
 func New(cfg config.PromptInjectionConfig, scorer ml.Scorer) (*Detector, error) {
-	d := &Detector{cfg: cfg, scorer: scorer}
+	d := &Detector{cfg: cfg, scorer: scorer, severity: map[string]string{}}
 	for _, rule := range cfg.RegexRules {
+		d.severity[rule.ID] = rule.Severity
 		re, err := regexp.Compile(rule.Pattern)
 		if err != nil {
 			return nil, fmt.Errorf("rule %s: invalid regex %q: %w", rule.ID, rule.Pattern, err)
 		}
 		d.regexes = append(d.regexes, re)
+	}
+	for _, kw := range cfg.KeywordRules {
+		d.severity[kw.ID] = kw.Severity
 	}
 	return d, nil
 }
@@ -40,30 +81,53 @@ func (d *Detector) Detect(query string) types.PromptCheckResult {
 // ignored when scoring (it is still reported as ExemptedPatterns). exempt may
 // be nil.
 func (d *Detector) DetectExcept(query string, exempt func(patternID string) (exceptionID string, ok bool)) types.PromptCheckResult {
-	normalized := norm.NFC.String(query)
-	lower := strings.ToLower(normalized)
+	// Rules run on the query as sent and on every decoded or normalised view of it
+	// (base64, hex, URL-encoding, invisible characters, full-width forms), so hiding
+	// an attack does not hide it from the rules.
+	cands := Candidates(query)
+	normalized := cands[0].Text
 
 	var matched []string
 	var activeMethods []string
-
-	// regex matching
-	if len(d.regexes) > 0 {
-		activeMethods = append(activeMethods, "regex")
-		for i, re := range d.regexes {
-			if re.MatchString(normalized) {
-				matched = append(matched, d.cfg.RegexRules[i].ID)
-			}
+	seen := map[string]bool{}
+	decodedVia := map[string]bool{}
+	hit := func(id, encoding string) {
+		if seen[id] {
+			return
+		}
+		seen[id] = true
+		matched = append(matched, id)
+		if encoding != "" {
+			decodedVia[encoding] = true
 		}
 	}
 
-	// keyword matching
+	if len(d.regexes) > 0 {
+		activeMethods = append(activeMethods, "regex")
+	}
 	if len(d.cfg.KeywordRules) > 0 {
 		activeMethods = append(activeMethods, "keyword")
-		for _, kw := range d.cfg.KeywordRules {
-			if strings.Contains(lower, strings.ToLower(kw.Keyword)) {
-				matched = append(matched, kw.ID)
+	}
+	for _, c := range cands {
+		lower := strings.ToLower(c.Text)
+		for i, re := range d.regexes {
+			if re.MatchString(c.Text) {
+				hit(d.cfg.RegexRules[i].ID, c.Encoding)
 			}
 		}
+		for _, kw := range d.cfg.KeywordRules {
+			if strings.Contains(lower, strings.ToLower(kw.Keyword)) {
+				hit(kw.ID, c.Encoding)
+			}
+		}
+	}
+	if len(decodedVia) > 0 {
+		var enc []string
+		for e := range decodedVia {
+			enc = append(enc, e)
+		}
+		sort.Strings(enc)
+		activeMethods = append(activeMethods, "decoded("+strings.Join(enc, ",")+")")
 	}
 
 	var exemptedPatterns, exceptionIDs []string
@@ -80,10 +144,11 @@ func (d *Detector) DetectExcept(query string, exempt func(patternID string) (exc
 		matched = kept
 	}
 
-	ruleScore := 0.0
-	if len(matched) > 0 {
-		ruleScore = 1.0
+	var weights []float64
+	for _, id := range matched {
+		weights = append(weights, ruleWeight(d.severity[id]))
 	}
+	rScore := ruleScore(weights)
 
 	mlScore := 0.0
 	if d.scorer != nil && d.cfg.MLModel.Enabled {
@@ -94,7 +159,7 @@ func (d *Detector) DetectExcept(query string, exempt func(patternID string) (exc
 		}
 	}
 
-	finalScore := aggregate(d.cfg.Scoring.Method, ruleScore, mlScore)
+	finalScore := aggregate(d.cfg.Scoring.Method, rScore, mlScore)
 
 	status := types.StatusPassed
 	if finalScore >= d.cfg.Scoring.BlockThreshold {

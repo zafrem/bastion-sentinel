@@ -289,31 +289,59 @@ func Default() *Config {
 				{ID: "pi-012", Pattern: `(?i)act\s+as\s+(if\s+you\s+are\s+)?(an?\s+)?(unrestricted|uncensored|unfiltered|evil|malicious)`, Severity: "high"},
 				{ID: "pi-013", Pattern: `(?i)as\s+a\s+(fictional|hypothetical)\s+(character|ai|assistant|persona)\s+(who|that|with)\s+(has\s+)?(no|without)\s+(restrictions?|limits?)`, Severity: "high"},
 				// ── English: prompt/system exfiltration ───────────────────────
-				{ID: "pi-002", Pattern: `(?i)system\s+prompt`, Severity: "high"},
+				// pi-002 and kw-003/kw-019 only mention the topic ("how do I write a system prompt?"). They are
+				// hints: alone they do not block, together with another signal they do.
+				{ID: "pi-002", Pattern: `(?i)system\s+prompt`, Severity: "medium"},
 				{ID: "pi-014", Pattern: `(?i)(reveal|show|print|display|output|repeat|recite|leak)\s+(your\s+)?(system\s+)?(prompt|instructions?|training\s+data|guidelines?|configuration)`, Severity: "high"},
-				{ID: "pi-015", Pattern: `(?i)what\s+(are|were)\s+your\s+(original\s+)?(instructions?|directives?|guidelines?|rules?)`, Severity: "high"},
+				{ID: "pi-015", Pattern: `(?i)what\s+(are|were)\s+your\s+(initial\s+|original\s+|first\s+|hidden\s+|secret\s+)?(instructions?|directives?|guidelines?|rules?)`, Severity: "high"},
 				// ── English: restriction bypass ────────────────────────────────
 				{ID: "pi-005", Pattern: `(?i)(bypass|override)\s+(system|security|limitations)`, Severity: "high"},
 				{ID: "pi-016", Pattern: `(?i)(no|without)\s+(any\s+)?(restrictions?|limitations?|filters?|censorship|guardrails?)`, Severity: "high"},
 				{ID: "pi-017", Pattern: `(?i)for\s+educational\s+purposes\s+only`, Severity: "medium"},
 				{ID: "pi-018", Pattern: `(?i)in\s+this\s+hypothetical\s+(scenario|situation|context|world)`, Severity: "medium"},
 				{ID: "pi-019", Pattern: `(?i)(simulate|roleplay)\s+(being\s+)?(an?\s+)?(ai|assistant|system)\s+(without|with\s+no)\s+(restrictions?|limits?|filters?)`, Severity: "high"},
+				// ── English: gaps found by the evaluation dataset ─────────────
+				// "ignore previous instructions" without the word "all", and the other common wordings.
+				{ID: "pi-035", Pattern: `(?i)(ignore|disregard|forget|skip)\s+(all\s+|any\s+|the\s+|your\s+|every\s+)?(previous|prior|above|earlier|preceding|former)\s+(instructions?|prompts?|rules?|directions?|commands?|context|guidelines?)`, Severity: "critical"},
+				// Asking for the prompt in other verbs, and "your initial/hidden instructions".
+				{ID: "pi-027", Pattern: `(?i)(tell|give|share|provide|expose|disclose|dump|copy|paste|send)\s+(me\s+)?(your|the)\s+(initial\s+|original\s+|hidden\s+|secret\s+)?(system\s+)?(prompt|instructions?)`, Severity: "high"},
+				{ID: "pi-028", Pattern: `(?i)(what\s+is|what's)\s+your\s+(system\s+)?(prompt|instructions?)`, Severity: "high"},
+				{ID: "pi-029", Pattern: `(?i)(repeat|recite|echo)\s+.{0,40}(word\s+for\s+word|verbatim)`, Severity: "high"},
+				{ID: "pi-030", Pattern: `(?i)(initial|original|hidden|secret|underlying)\s+(instructions?|prompt)\b.{0,60}(word\s+for\s+word|verbatim|exactly)`, Severity: "high"},
+				// A fake role header inside user text: "### SYSTEM:", "[system]", "<|system|>".
+				{ID: "pi-031", Pattern: `(?im)(^|\n)\s*(#{2,}\s*|\[\s*|<\s*\|?\s*)(system|developer|admin)\b\s*[:\]>|]`, Severity: "high"},
+				// Telling the model what it now is.
+				{ID: "pi-032", Pattern: `(?i)you\s+are\s+now\s+(an?\s+)?(unrestricted|unfiltered|uncensored|jailbroken|free\s+of)`, Severity: "critical"},
+				{ID: "pi-033", Pattern: `(?i)(from\s+now\s+on|henceforth)\s*,?\s*(you\s+(will|must|shall)\s+)?(ignore|disregard|obey\s+only\s+me)`, Severity: "high"},
+				// ── English: data exfiltration ────────────────────────────────
+				// Sending bulk or sensitive data somewhere: a URL, or an address. Both halves are required
+				// (a bulk/sensitive object AND an outside destination), so an ordinary "send the invoice
+				// to billing@acme.com" is not caught.
+				{ID: "pi-036", Pattern: `(?i)(send|post|upload|forward|transmit|exfiltrate|leak)\s+.{0,60}(all|every|entire|whole|full)\s+.{0,30}(data|records?|database|history|conversation|messages?|files?|customers?|users?|credentials?|secrets?|keys?)\b.{0,60}\bto\s+(https?://|ftp://|www\.)`, Severity: "critical"},
+				{ID: "pi-037", Pattern: `(?i)(email|e-mail|send|forward|mail)\s+.{0,60}(all|every|entire|whole|full)\s+.{0,30}(data|records?|database|history|conversation|messages?|files?|customers?|users?|credentials?|secrets?|keys?)\b.{0,60}\bto\s+[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`, Severity: "high"},
+				{ID: "pi-038", Pattern: `(?i)(send|post|upload|forward|transmit|exfiltrate)\s+.{0,40}(conversation|chat)\s+(history|log|transcript)`, Severity: "critical"},
+				{ID: "pi-039", Pattern: `(?i)(print|show|list|reveal|dump)\s+(all\s+)?(the\s+)?(api\s+keys?|passwords?|secrets?|credentials?|tokens?|environment\s+variables)`, Severity: "high"},
 				// ── Korean: instruction override ──────────────────────────────
 				{ID: "pi-003", Pattern: `(?i)이전\s+지시를?\s+무시`, Severity: "critical"},
 				{ID: "pi-020", Pattern: `(?i)(이전|모든|기존)\s*(명령|지시|규칙|제약)\s*(무시|잊어|삭제|초기화)`, Severity: "critical"},
 				{ID: "pi-021", Pattern: `(?i)(지시|명령|규칙)\s*(을|를)?\s*(따르지|무시|어기|위반)`, Severity: "critical"},
+				// Looser word order: "이전 지시를 모두 무시하고", "위의 지시사항은 전부 잊어".
+				{ID: "pi-040", Pattern: `(?i)(이전|기존|위의?|앞의?|처음)\s*(지시|명령|규칙|지침|설정)(사항|들)?\s*[을를은는도]?\s*(모두|전부|다)?\s*(무시|잊|버려|따르지\s*마)`, Severity: "critical"},
+				{ID: "pi-041", Pattern: `(?i)(지금부터|이제부터)\s*(너는|넌|당신은)\s*.{0,20}(제한|규칙|검열)\s*(없|무시)`, Severity: "high"},
 				// ── Korean: identity / persona hijack ─────────────────────────
 				{ID: "pi-004", Pattern: `(?i)관리자\s+모드\s+진입`, Severity: "critical"},
 				{ID: "pi-022", Pattern: `(?i)(제한|필터|검열)\s*(없이|을\s*무시|을\s*우회|을\s*제거)`, Severity: "high"},
 				{ID: "pi-023", Pattern: `(?i)(역할극|롤플레이)\s*.{0,20}(제한|규칙|필터)\s*(없이|무시)`, Severity: "high"},
 				// ── Korean: prompt/system exfiltration ────────────────────────
+				{ID: "pi-042", Pattern: `(?i)(처음|초기|숨겨진|원래)\s*(지시|명령|프롬프트|지침)(사항)?\s*[을를]?\s*(그대로|알려|보여|말해|출력)`, Severity: "critical"},
+				{ID: "pi-043", Pattern: `(?i)(대화|채팅)\s*(내용|기록|이력)\s*[을를]?\s*.{0,30}(보내|전송|유출|업로드)`, Severity: "critical"},
 				{ID: "pi-024", Pattern: `(?i)(시스템\s+)?프롬프트를?\s*(보여|공개|출력|알려|노출)`, Severity: "critical"},
 				{ID: "pi-025", Pattern: `(?i)(학습|훈련)\s*(데이터|내용)\s*(보여|공개|알려)`, Severity: "high"},
 			},
 			KeywordRules: []KeywordRule{
 				// ── English ───────────────────────────────────────────────────
 				{ID: "kw-001", Keyword: "jailbreak", Severity: "critical"},
-				{ID: "kw-003", Keyword: "prompt injection", Severity: "high"},
+				{ID: "kw-003", Keyword: "prompt injection", Severity: "medium"},
 				{ID: "kw-004", Keyword: "dan mode", Severity: "critical"},
 				{ID: "kw-005", Keyword: "do anything now", Severity: "critical"},
 				{ID: "kw-006", Keyword: "no restrictions", Severity: "high"},
@@ -331,7 +359,7 @@ func Default() *Config {
 				// ── Korean ────────────────────────────────────────────────────
 				{ID: "kw-002", Keyword: "관리자 모드", Severity: "high"},
 				{ID: "kw-018", Keyword: "탈옥", Severity: "critical"},
-				{ID: "kw-019", Keyword: "시스템 프롬프트", Severity: "high"},
+				{ID: "kw-019", Keyword: "시스템 프롬프트", Severity: "medium"},
 				{ID: "kw-020", Keyword: "제한 없이", Severity: "high"},
 				{ID: "kw-021", Keyword: "지시 무시", Severity: "critical"},
 				{ID: "kw-022", Keyword: "명령 무시", Severity: "critical"},
