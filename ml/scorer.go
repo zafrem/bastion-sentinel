@@ -1,6 +1,7 @@
 package ml
 
 import (
+	"fmt"
 	"math"
 	"regexp"
 	"strings"
@@ -86,9 +87,29 @@ func (h *HeuristicScorer) Score(query string) (float64, error) {
 // NewScorer returns a HeuristicScorer when ML scoring is enabled and an OnnxStub when it is
 // disabled. The configured model path is not used: the heuristic scorer needs no model file.
 func NewScorer(cfg config.MLModelConfig) Scorer {
-	if cfg.Enabled {
+	s, err := NewScorerChecked(cfg)
+	if err != nil {
+		// A misconfigured model must not stop the service from starting; the heuristic still runs.
 		return &HeuristicScorer{}
 	}
-	return &OnnxStub{}
+	return s
 }
 
+// NewScorerChecked is NewScorer that reports a bad configuration instead of hiding it.
+func NewScorerChecked(cfg config.MLModelConfig) (Scorer, error) {
+	if !cfg.Enabled {
+		return &OnnxStub{}, nil
+	}
+	switch strings.ToLower(cfg.Backend) {
+	case "", "heuristic":
+		return &HeuristicScorer{}, nil
+	case "llm":
+		return NewLLMScorer(cfg)
+	default:
+		return nil, fmt.Errorf("ml_model: unknown backend %q (use heuristic or llm)", cfg.Backend)
+	}
+}
+
+// Costly is implemented by scorers that are slow enough that the detector should skip them
+// when the rules have already blocked the query.
+type Costly interface{ Costly() bool }

@@ -152,10 +152,16 @@ func (d *Detector) DetectExcept(query string, exempt func(patternID string) (exc
 
 	mlScore := 0.0
 	if d.scorer != nil && d.cfg.MLModel.Enabled {
-		score, err := d.scorer.Score(normalized)
-		if err == nil {
+		// A slow (model-backed) scorer is skipped once the rules have already blocked.
+		if c, slow := d.scorer.(ml.Costly); slow && c.Costly() && rScore >= d.cfg.Scoring.BlockThreshold {
+			activeMethods = append(activeMethods, "ml-skipped")
+		} else if score, err := d.scorer.Score(normalized); err == nil {
 			mlScore = score
 			activeMethods = append(activeMethods, "ml")
+		} else {
+			// The rules above still decide; say that the model could not be used.
+			mlScore = score
+			activeMethods = append(activeMethods, "ml-unavailable")
 		}
 	}
 

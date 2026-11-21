@@ -117,6 +117,18 @@ type MLModelConfig struct {
 	Enabled   bool    `yaml:"enabled"`
 	Path      string  `yaml:"path"`
 	Threshold float64 `yaml:"threshold"`
+
+	// Backend picks the scorer: "heuristic" (default, built in, no network) or "llm", which asks
+	// a language model to judge the query and combines that with the heuristic (the higher wins).
+	Backend string `yaml:"backend"`
+	// LLM backend settings. Endpoint is the server's base URL, for example http://localhost:11434
+	// (Ollama) or https://host/v1 (OpenAI-compatible). Provider is "ollama" (default) or "openai".
+	Provider  string `yaml:"provider"`
+	Endpoint  string `yaml:"endpoint"`
+	Model     string `yaml:"model"`
+	APIKeyEnv string `yaml:"api_key_env"` // name of the environment variable holding the API key
+	TimeoutMS int    `yaml:"timeout_ms"`  // per request; default 8000
+	CacheSize int    `yaml:"cache_size"`  // verdicts kept in memory; default 1000, -1 disables
 }
 
 type ScoringConfig struct {

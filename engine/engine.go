@@ -21,7 +21,10 @@ type Engine struct {
 }
 
 func New(cfg *config.Config) (*Engine, error) {
-	scorer := ml.NewScorer(cfg.PromptInjection.MLModel)
+	scorer, err := ml.NewScorerChecked(cfg.PromptInjection.MLModel)
+	if err != nil {
+		return nil, err
+	}
 
 	pd, err := prompt.New(cfg.PromptInjection, scorer)
 	if err != nil {
