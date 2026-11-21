@@ -16,12 +16,27 @@ type piiRule struct {
 	name     string
 	re       *regexp.Regexp
 	severity string
+	// reportOnly rules are matched and listed but never rewrite the response.
+	reportOnly bool
 }
 
 // PIIDetector finds and sanitizes PII re-emergence in LLM responses.
 type PIIDetector struct {
 	rules           []piiRule
 	blockOnCritical bool
+}
+
+// isReportOnly reports whether a rule's declared policy asks to flag it without rewriting text.
+func isReportOnly(cfg config.PIIReemergenceConfig, r config.PIIPatternConfig) bool {
+	if !cfg.HonorReportAction || !strings.EqualFold(r.Action, "report") {
+		return false
+	}
+	for _, id := range cfg.AlwaysEnforce {
+		if id == r.ID {
+			return false
+		}
+	}
+	return true
 }
 
 func NewPIIDetector(cfg config.PIIReemergenceConfig) (*PIIDetector, error) {
@@ -32,7 +47,7 @@ func NewPIIDetector(cfg config.PIIReemergenceConfig) (*PIIDetector, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid PII pattern %s (%s): %w", r.ID, r.Pattern, err)
 		}
-		rules = append(rules, piiRule{id: r.ID, name: r.Name, re: re, severity: r.Severity})
+		rules = append(rules, piiRule{id: r.ID, name: r.Name, re: re, severity: r.Severity, reportOnly: isReportOnly(cfg, r)})
 	}
 
 	// ── Add external patterns if directory is provided ─────────────────────
@@ -46,7 +61,7 @@ func NewPIIDetector(cfg config.PIIReemergenceConfig) (*PIIDetector, error) {
 			if err != nil {
 				return nil, fmt.Errorf("invalid external PII pattern %s (%s): %w", r.ID, r.Pattern, err)
 			}
-			rules = append(rules, piiRule{id: r.ID, name: r.Name, re: re, severity: r.Severity})
+			rules = append(rules, piiRule{id: r.ID, name: r.Name, re: re, severity: r.Severity, reportOnly: isReportOnly(cfg, r)})
 		}
 	}
 
@@ -61,11 +76,18 @@ func (d *PIIDetector) Check(response string) types.PIICheckResult {
 // CheckWithMappings scans response for configured PII regexes and cross-references
 // any Vault token -> real_value mappings supplied in knownMappings.
 func (d *PIIDetector) CheckWithMappings(response string, knownMappings map[string]string) types.PIICheckResult {
-	var raw []types.PIIIncident
+	var raw, reported []types.PIIIncident
 
 	for _, rule := range d.rules {
 		matches := rule.re.FindAllStringIndex(response, -1)
 		for _, loc := range matches {
+			if rule.reportOnly {
+				reported = append(reported, types.PIIIncident{
+					PIIType: rule.name, RuleIDs: []string{rule.id},
+					OriginalValue: response[loc[0]:loc[1]], Start: loc[0], End: loc[1], ActionTaken: "reported",
+				})
+				continue
+			}
 			action := "masked"
 			if rule.severity == "critical" {
 				action = "redacted"
@@ -124,6 +146,7 @@ func (d *PIIDetector) CheckWithMappings(response string, knownMappings map[strin
 		Status:            status,
 		Incidents:         incidents,
 		RedactionsApplied: len(incidents),
+		Reported:          reported,
 	}
 }
 

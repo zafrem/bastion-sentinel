@@ -184,6 +184,8 @@ type PIIPatternConfig struct {
 	Name     string `yaml:"name"`
 	Pattern  string `yaml:"pattern"`
 	Severity string `yaml:"severity"` // "critical", "high", "medium"
+	// Action is the rule's declared policy ("redact" or "report"). Empty means redact.
+	Action string `yaml:"action"`
 }
 
 type VaultIntegrationConfig struct {
@@ -198,6 +200,13 @@ type PIIReemergenceConfig struct {
 	ExternalPatternsDir string                 `yaml:"external_patterns_dir"`
 	VaultIntegration    VaultIntegrationConfig `yaml:"vault_integration"`
 	BlockOnCritical     bool                   `yaml:"block_on_critical"`
+	// HonorReportAction keeps rules whose declared policy is "report" (low-signal patterns such as
+	// bare numbers, dates or names) out of the rewrite path: they are still detected and listed
+	// as reported incidents for audit, but the text the user receives is left unchanged. Turn it
+	// off to mask every match as before.
+	HonorReportAction bool `yaml:"honor_report_action"`
+	// AlwaysEnforce lists rule IDs that are masked even when their declared policy is "report".
+	AlwaysEnforce []string `yaml:"always_enforce"`
 }
 
 type HallucinationConfig struct {
@@ -378,9 +387,15 @@ func Default() *Config {
 					// Most standard PII patterns (email, SSN, Korean RRN, credit cards, etc.) 
 					// are now loaded automatically from the external pii-pattern-engine.
 					{ID: "pii-006", Name: "leaked_token", Pattern: `[A-Z]{2,}_[A-Z]{2,}_[a-z0-9]{16}`, Severity: "high"},
+					// Card numbers as people write them (groups separated by a space or hyphen). The upstream
+					// card rules only match unbroken digits, so without these a spaced card number was only
+					// ever caught by an unrelated, report-only general-ledger rule.
+					{ID: "card_grouped", Name: "payment card number (grouped)", Pattern: `\b(?:\d{4}[ -]){3}\d{4}\b`, Severity: "critical"},
+					{ID: "card_amex_grouped", Name: "American Express card number (grouped)", Pattern: `\b3[47]\d{2}[ -]\d{6}[ -]\d{5}\b`, Severity: "critical"},
 				},
 				ExternalPatternsDir: "external/pii-pattern-engine/regex",
 				BlockOnCritical:     true,
+				HonorReportAction:   true,
 			},
 			Hallucination: HallucinationConfig{
 				Enabled:            true,

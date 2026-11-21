@@ -135,5 +135,6 @@ func convertPattern(p PIIExternalPattern, fallbackID string) config.PIIPatternCo
 		Name:     name,
 		Pattern:  p.Pattern,
 		Severity: severity,
+		Action:   p.Policy.ActionOnMatch,
 	}
 }

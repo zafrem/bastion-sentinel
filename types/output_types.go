@@ -81,6 +81,9 @@ type PIICheckResult struct {
 	Status            string // "PASSED", "VIOLATIONS_DETECTED"
 	Incidents         []PIIIncident
 	RedactionsApplied int
+	// Reported lists matches of report-only rules. They are kept for audit but the text was not
+	// changed for them, so they never count as redactions and never make a response SANITIZED.
+	Reported []PIIIncident
 }
 
 // HallucinationCheckResult reports how well the response is grounded.
