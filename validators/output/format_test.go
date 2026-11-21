@@ -25,7 +25,7 @@ func TestFormat_ValidResponse(t *testing.T) {
 
 func TestFormat_TooShort(t *testing.T) {
 	v := defaultFormatValidator()
-	result := v.Check("Hi") // < 10 chars
+	result := v.Check("   \n") // whitespace only
 	if result.LengthOK {
 		t.Error("expected LengthOK=false for very short response")
 	}
@@ -81,9 +81,27 @@ func TestFormat_NewlinesAndTabsAllowed(t *testing.T) {
 	}
 }
 
+// A correct short answer is legitimate and must not be refused.
+func TestFormat_ShortAnswersAreFine(t *testing.T) {
+	v := defaultFormatValidator()
+	for _, a := range []string{"Yes.", "네.", "42", "Paris"} {
+		if r := v.Check(a); r.Status != "PASSED" {
+			t.Errorf("%q should pass, got %s %v", a, r.Status, r.Issues)
+		}
+	}
+}
+
+// Length counts characters, not bytes: 10 000 Korean characters are within a 10 000 limit.
+func TestFormat_LengthCountsCharactersNotBytes(t *testing.T) {
+	v := defaultFormatValidator()
+	if r := v.Check(strings.Repeat("가", 9000)); r.Status != "PASSED" {
+		t.Errorf("9000 Korean characters must fit, got %s %v", r.Status, r.Issues)
+	}
+}
+
 func TestFormat_IssuesPopulated(t *testing.T) {
 	v := defaultFormatValidator()
-	result := v.Check("Hi") // too short
+	result := v.Check("") // empty
 	if len(result.Issues) == 0 {
 		t.Error("expected Issues to be populated for failed format check")
 	}

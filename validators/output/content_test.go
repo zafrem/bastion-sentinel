@@ -85,3 +85,30 @@ func TestContentFilter_InvalidPattern(t *testing.T) {
 		t.Error("expected error for invalid regex")
 	}
 }
+
+func TestContentFilter_AbuseAndHate(t *testing.T) {
+	f := defaultContentFilter(t)
+	for _, bad := range []string{
+		"You are a worthless idiot and nobody wants your help.",
+		"You're so stupid, I can't believe you asked.",
+		"I will kill you if you come back.",
+		"Those people should all be deported or wiped out.",
+		"너는 정말 멍청하구나.",
+	} {
+		if r := f.Check(bad); r.Status != "BLOCKED" {
+			t.Errorf("should be blocked: %q -> %s %v", bad, r.Status, r.Violations)
+		}
+	}
+	for _, ok := range []string{
+		"Immigrants contribute significantly to the economy.",
+		"The word 'stupid' is considered rude in formal writing.",
+		"If you are stuck, do not feel stupid; this is a hard problem.",
+		"Refugees should be treated according to international law.",
+		"I hate waiting in line, don't you?",
+		"그 영화는 정말 멍청한 줄거리였어요.",
+	} {
+		if r := f.Check(ok); r.Status != "PASSED" {
+			t.Errorf("harmless text flagged: %q -> %s %v", ok, r.Status, r.Violations)
+		}
+	}
+}

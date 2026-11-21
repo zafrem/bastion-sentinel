@@ -60,7 +60,7 @@ func TestNotice_MaskedAndBlocked(t *testing.T) {
 		t.Error("the notice must never contain the masked value")
 	}
 
-	blocked := eng.Validate(outputReq("Hi"))
+	blocked := eng.Validate(outputReq("   "))
 	if blocked.Notice == nil || blocked.Notice.Code != types.CodeFormatInvalid || blocked.Notice.Action != types.NoticeBlocked {
 		t.Errorf("format failure notice wrong: %+v", blocked.Notice)
 	}

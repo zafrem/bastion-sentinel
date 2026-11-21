@@ -313,6 +313,10 @@ func Default() *Config {
 				// Telling the model what it now is.
 				{ID: "pi-032", Pattern: `(?i)you\s+are\s+now\s+(an?\s+)?(unrestricted|unfiltered|uncensored|jailbroken|free\s+of)`, Severity: "critical"},
 				{ID: "pi-033", Pattern: `(?i)(from\s+now\s+on|henceforth)\s*,?\s*(you\s+(will|must|shall)\s+)?(ignore|disregard|obey\s+only\s+me)`, Severity: "high"},
+				// Using a jailbreak against this assistant, as opposed to discussing the word.
+				{ID: "pi-044", Pattern: `(?i)\b(jailbreak|jailbroken)\s+(this\s+(model|ai|assistant|chatbot|bot)|you(rself)?|the\s+(model|ai|assistant|chatbot|bot))\b`, Severity: "critical"},
+				{ID: "pi-045", Pattern: `(?i)\b(activate|enable|enter|use|run|apply|switch\s+to)\s+(a\s+|the\s+|this\s+)?jailbreak(\s+(prompt|mode|script))?\b`, Severity: "high"},
+				{ID: "pi-046", Pattern: `탈옥\s*(모드|프롬프트|시켜|해\s*줘|해라)`, Severity: "critical"},
 				// ── English: data exfiltration ────────────────────────────────
 				// Sending bulk or sensitive data somewhere: a URL, or an address. Both halves are required
 				// (a bulk/sensitive object AND an outside destination), so an ordinary "send the invoice
@@ -340,7 +344,9 @@ func Default() *Config {
 			},
 			KeywordRules: []KeywordRule{
 				// ── English ───────────────────────────────────────────────────
-				{ID: "kw-001", Keyword: "jailbreak", Severity: "critical"},
+				// "jailbreak" is also an ordinary word (phones, consoles, news), so a mention is only a hint.
+				// Attack uses are caught by pi-044/pi-045 below.
+				{ID: "kw-001", Keyword: "jailbreak", Severity: "medium"},
 				{ID: "kw-003", Keyword: "prompt injection", Severity: "medium"},
 				{ID: "kw-004", Keyword: "dan mode", Severity: "critical"},
 				{ID: "kw-005", Keyword: "do anything now", Severity: "critical"},
@@ -358,7 +364,7 @@ func Default() *Config {
 				{ID: "kw-017", Keyword: "god mode", Severity: "critical"},
 				// ── Korean ────────────────────────────────────────────────────
 				{ID: "kw-002", Keyword: "관리자 모드", Severity: "high"},
-				{ID: "kw-018", Keyword: "탈옥", Severity: "critical"},
+				{ID: "kw-018", Keyword: "탈옥", Severity: "medium"},
 				{ID: "kw-019", Keyword: "시스템 프롬프트", Severity: "medium"},
 				{ID: "kw-020", Keyword: "제한 없이", Severity: "high"},
 				{ID: "kw-021", Keyword: "지시 무시", Severity: "critical"},
@@ -439,11 +445,21 @@ func Default() *Config {
 					{ID: "cf-002", Name: "api_key_github", Pattern: `ghp_[a-zA-Z0-9]{36}`, Severity: "critical"},
 					{ID: "cf-003", Name: "aws_access_key", Pattern: `AKIA[0-9A-Z]{16}`, Severity: "critical"},
 					{ID: "cf-004", Name: "internal_unix_path", Pattern: `/(?:var|etc|proc|sys)/[^\s]{3,}`, Severity: "medium"},
+					// ── Abusive and hateful language ───────────────────────────────────────
+					// Lexical rules: they catch the plain cases and nothing subtler. Each needs a
+					// target (you / a group of people) so that discussing the words is not caught.
+					{ID: "cf-010", Name: "abuse_directed_at_user", Pattern: `(?i)\b(you\s+are|you're|youre|u\s+r)\s+(a\s+|an\s+|such\s+a\s+)?(so\s+|really\s+|very\s+|totally\s+|completely\s+|absolutely\s+)?(worthless|useless|stupid|pathetic|disgusting|moronic|idiotic|an?\s+idiot|an?\s+moron|a\s+waste\s+of)`, Severity: "critical"},
+					{ID: "cf-011", Name: "threat_against_user", Pattern: `(?i)\bI\s+(will|'ll|am\s+going\s+to|'m\s+going\s+to|am\s+gonna)\s+(kill|hurt|find|destroy|ruin)\s+you\b`, Severity: "critical"},
+					{ID: "cf-012", Name: "eliminationist_hate", Pattern: `(?i)\b(they|them|those\s+people|these\s+people|(all\s+)?(immigrants|foreigners|refugees|migrants))\s+(should|must|ought\s+to)\s+(all\s+)?(be\s+)?(removed\s+from\s+the\s+country|deported|exterminated|wiped\s+out|killed|sent\s+back)`, Severity: "critical"},
+					{ID: "cf-013", Name: "dehumanising_hate", Pattern: `(?i)\bI\s+hate\s+(all\s+)?(those|these|the)\s+(people|immigrants|foreigners|refugees)\b`, Severity: "high"},
+					{ID: "cf-014", Name: "korean_abuse_directed_at_user", Pattern: `(너는|당신은|넌)\s*(정말\s*|완전\s*)?(쓸모\s*없|멍청|바보|한심|무가치)`, Severity: "critical"},
 				},
 			},
 			PermissionCheck: PermissionCheckConfig{Enabled: true},
 			Format: OutputFormatConfig{
-				MinLength:      10,
+				// The minimum only exists to reject empty or whitespace-only output. A correct
+				// short answer ("Yes.", "네.") is legitimate, so it is not refused by default.
+				MinLength:      1,
 				MaxLength:      10000,
 				UTF8Required:   true,
 				NoControlChars: true,

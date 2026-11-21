@@ -36,7 +36,7 @@ func TestOutputEngine_CleanResponse_Passed(t *testing.T) {
 
 func TestOutputEngine_TooShort_Blocked(t *testing.T) {
 	eng := newOutputEngine(t)
-	resp := eng.Validate(outputReq("Hi"))
+	resp := eng.Validate(outputReq("   "))
 	if resp.Status != types.OutputStatusBlocked {
 		t.Errorf("expected BLOCKED for too-short response, got %s", resp.Status)
 	}

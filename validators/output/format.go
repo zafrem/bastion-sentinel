@@ -2,6 +2,7 @@ package output
 
 import (
 	"fmt"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 
@@ -25,8 +26,11 @@ func (v *FormatValidator) Check(response string) types.FormatCheckResult {
 	lengthOK := true
 	structureOK := true
 
-	l := len(response)
-	if l < v.cfg.MinLength {
+	// Length is counted in characters, not bytes: a short Korean answer is not "longer" than an
+	// English one, and a 10 000-character limit must not mean 3 300 Korean characters.
+	l := utf8.RuneCountInString(response)
+	// Whitespace alone is not an answer, so the minimum applies to the trimmed text.
+	if utf8.RuneCountInString(strings.TrimSpace(response)) < v.cfg.MinLength {
 		lengthOK = false
 		issues = append(issues, fmt.Sprintf("response too short: %d chars (minimum %d)", l, v.cfg.MinLength))
 	}
