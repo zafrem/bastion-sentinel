@@ -98,7 +98,9 @@ func buildValidateCmd() *cobra.Command {
 			out := cmd.OutOrStdout()
 			var outFile *os.File
 			if outputFile != "" {
-				f, err := os.Create(outputFile)
+				// Results can contain the queries that were validated, so the file is private to the
+				// user. The path is the --output-file flag, not request input.
+				f, err := os.OpenFile(outputFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) // #nosec G304 -- path comes from operator config or CLI, not request input
 				if err != nil {
 					return fmt.Errorf("open output file: %w", err)
 				}
