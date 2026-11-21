@@ -32,6 +32,7 @@ type SentinelEvent struct {
 	Timestamp     int64                  `json:"timestamp"`
 	DurationMs    int64                  `json:"duration_ms,omitempty"`
 	TenantID      string                 `json:"tenant_id"`
+	Profile       string                 `json:"profile,omitempty"` // policy profile applied; omitted when none
 	UserID        string                 `json:"user_id,omitempty"`
 	RequestID     string                 `json:"request_id,omitempty"`
 	Severity      string                 `json:"severity"`
@@ -47,6 +48,7 @@ type TraceContext struct {
 	SpanID       string
 	ParentSpanID string
 	TenantID     string
+	Profile      string // policy profile that governed the request; empty when no policy is configured
 	UserID       string
 	RequestID    string
 }
@@ -111,6 +113,7 @@ func newEvent(tc TraceContext, eventType, severity, category string, data map[st
 		ModuleVersion: sentinelVersion,
 		Timestamp:     time.Now().UnixNano(),
 		TenantID:      tc.TenantID,
+		Profile:       tc.Profile,
 		UserID:        tc.UserID,
 		RequestID:     tc.RequestID,
 		Severity:      severity,

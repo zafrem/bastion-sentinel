@@ -226,6 +226,9 @@ How it works:
 - **The response says which profile applied.** REST input responses carry `"profile"`, and output responses
   `"Profile"`; both are omitted when no profile applied. gRPC routes the same way and
   `ValidateResponse.profile` (field 9) carries the name on `Validate`, `ValidateBatch` and both streams.
+- **Events and metrics carry the profile.** Every event Sentinel publishes for a request has an optional
+  top-level `"profile"` next to `tenant_id` (omitted when no profile applied), and the Prometheus request,
+  output, duration and injection-score metrics have a `profile` label.
 - **The cache is safe.** Cached input verdicts are keyed by the query and the metadata, including the tenant,
   so a verdict reached under one profile is never served to a tenant held to another.
 - **Exceptions still apply.** A scoped exception exempts a rule for a tenant inside whichever profile that

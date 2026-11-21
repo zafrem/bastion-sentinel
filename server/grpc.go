@@ -217,6 +217,7 @@ func (g *GRPC) Validate(ctx context.Context, req *sentinelv1.ValidateRequest) (*
 		tc.TenantID = req.GetMetadata()["tenant_id"]
 	}
 	tc.RequestID = resp.RequestID
+	tc.Profile = resp.Profile
 	if resp.Status == types.StatusBlocked {
 		g.pub.Publish(EventInjectionBlocked(tc, resp.PromptCheck.RiskScore, strings.Join(resp.PromptCheck.MatchedPatterns, ",")))
 		g.hm.Fire(hooks.Event{
@@ -272,6 +273,7 @@ func (g *GRPC) ValidateInputStream(stream sentinelv1.SentinelService_ValidateInp
 
 		tc := traceFromGRPCCtx(stream.Context())
 		tc.RequestID = resp.RequestID
+		tc.Profile = resp.Profile
 		if resp.Status == types.StatusBlocked {
 			g.pub.Publish(EventInjectionBlocked(tc, resp.PromptCheck.RiskScore, strings.Join(resp.PromptCheck.MatchedPatterns, ",")))
 		}
@@ -319,6 +321,7 @@ func (g *GRPC) ValidateOutputStream(stream sentinelv1.SentinelService_ValidateOu
 		tc := traceFromGRPCCtx(stream.Context())
 		tc.RequestID = req.GetRequestId()
 		tc.TenantID = meta["tenant_id"]
+		tc.Profile = outResp.Profile
 		g.pub.Publish(EventOutputValidated(tc, string(outResp.Status), ""))
 
 		pbStatus := sentinelv1.ValidateResponse_PASSED

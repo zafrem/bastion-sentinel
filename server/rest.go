@@ -230,6 +230,7 @@ func (s *REST) handleValidate(w http.ResponseWriter, r *http.Request) {
 							r.Header.Get("X-Parent-Span-ID"), tenantID,
 							req.Metadata["user_id"], req.RequestID,
 						)
+						etc.Profile = resp.Profile
 						s.pub.Publish(EventExceptionApplied(etc, []string{excID}))
 						resp.ExceptionsApplied = append(resp.ExceptionsApplied, excID)
 						continue
@@ -243,6 +244,7 @@ func (s *REST) handleValidate(w http.ResponseWriter, r *http.Request) {
 							r.Header.Get("X-Parent-Span-ID"), tenantID,
 							req.Metadata["user_id"], req.RequestID,
 						)
+						itc.Profile = resp.Profile
 						s.pub.Publish(EventIndustryFilterBlocked(itc, f.ID(), decision.Reason))
 						s.hm.Fire(hooks.Event{
 							Type: hooks.EventIndustryFilterBlocked, RequestID: req.RequestID,
@@ -264,6 +266,7 @@ func (s *REST) handleValidate(w http.ResponseWriter, r *http.Request) {
 						r.Header.Get("X-Parent-Span-ID"), tenantID,
 						req.Metadata["user_id"], req.RequestID,
 					)
+					itc.Profile = resp.Profile
 					s.pub.Publish(EventIndustryFilterRedacted(itc, f.ID(), decision.Reason))
 					s.hm.Fire(hooks.Event{
 						Type: hooks.EventIndustryFilterRedacted, RequestID: req.RequestID,
@@ -306,6 +309,7 @@ func (s *REST) handleValidate(w http.ResponseWriter, r *http.Request) {
 		req.Metadata["user_id"],
 		req.RequestID,
 	)
+	tc.Profile = resp.Profile
 	if resp.Status == types.StatusBlocked {
 		s.pub.Publish(EventInjectionBlocked(tc, resp.PromptCheck.RiskScore, strings.Join(resp.PromptCheck.MatchedPatterns, ",")))
 		s.hm.Fire(hooks.Event{
@@ -705,6 +709,7 @@ func (s *REST) handleOutputValidate(w http.ResponseWriter, r *http.Request) {
 		req.User.UserID,
 		req.RequestID,
 	)
+	tc.Profile = resp.Profile
 	action := ""
 	if resp.Checks.PIICheck.RedactionsApplied > 0 {
 		piiTypes := make([]string, 0, len(resp.Checks.PIICheck.Incidents))
@@ -826,6 +831,7 @@ func (s *REST) handleValidateWithContext(w http.ResponseWriter, r *http.Request)
 		req.Metadata["user_id"],
 		req.RequestID,
 	)
+	tc.Profile = queryResp.Profile
 
 	finalStatus := queryResp.Status
 	if docBlocked {
@@ -954,6 +960,7 @@ func (s *REST) handleOutputWithMappings(w http.ResponseWriter, r *http.Request) 
 		req.User.UserID,
 		req.RequestID,
 	)
+	tc.Profile = resp.Profile
 
 	// Honey-token output leak detection: check LLM response against orchestrator-supplied refs.
 	for _, ref := range req.HoneyTokenRefs {

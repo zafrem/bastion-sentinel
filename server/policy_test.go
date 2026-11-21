@@ -1,17 +1,21 @@
 package server_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -298,4 +302,115 @@ func metricValue(body, name, labels string) float64 {
 		}
 	}
 	return 0
+}
+
+// fakeNATS is just enough of the NATS protocol to accept a client and record what it publishes.
+type fakeNATS struct {
+	ln   net.Listener
+	mu   sync.Mutex
+	msgs []map[string]any
+}
+
+func newFakeNATS(t *testing.T) *fakeNATS {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeNATS{ln: ln}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go f.serve(c)
+		}
+	}()
+	return f
+}
+
+func (f *fakeNATS) serve(c net.Conn) {
+	defer c.Close()
+	_, _ = c.Write([]byte("INFO {\"server_id\":\"fake\",\"version\":\"2.10.0\",\"max_payload\":1048576,\"proto\":1}\r\n"))
+	rd := bufio.NewReader(c)
+	for {
+		line, err := rd.ReadString('\n')
+		if err != nil {
+			return
+		}
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "PING"):
+			_, _ = c.Write([]byte("PONG\r\n"))
+		case strings.HasPrefix(line, "PUB "):
+			parts := strings.Fields(line)
+			n, _ := strconv.Atoi(parts[len(parts)-1])
+			buf := make([]byte, n+2)
+			if _, err := io.ReadFull(rd, buf); err != nil {
+				return
+			}
+			var m map[string]any
+			if json.Unmarshal(buf[:n], &m) == nil {
+				f.mu.Lock()
+				f.msgs = append(f.msgs, m)
+				f.mu.Unlock()
+			}
+		}
+	}
+}
+
+func (f *fakeNATS) events() []map[string]any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]map[string]any(nil), f.msgs...)
+}
+
+func TestEvents_CarryTheProfile(t *testing.T) {
+	nats := newFakeNATS(t)
+	srv, _ := restFrom(t, audiences+"events:\n  nats_url: nats://"+nats.ln.Addr().String()+"\n")
+
+	post(t, srv, "/v1/sentinel/validate/input", inputBody("someone", borderline))
+	post(t, srv, "/v1/sentinel/validate/input", inputBody("corp", borderline))
+	post(t, srv, "/v1/sentinel/validate/output", map[string]any{"request_id": "o", "llm_response": "Yes, it is open.",
+		"user": map[string]any{"UserID": "u", "TenantID": "someone", "AccessLevel": "full"}})
+
+	deadline := time.Now().Add(3 * time.Second)
+	for len(nats.events()) < 5 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	seen := map[string]bool{}
+	for _, ev := range nats.events() {
+		tenant, _ := ev["tenant_id"].(string)
+		profile, _ := ev["profile"].(string)
+		want := map[string]string{"corp": "staff", "someone": "public"}[tenant]
+		if profile != want {
+			t.Errorf("%v event for tenant %q: profile %q, want %q", ev["event_type"], tenant, profile, want)
+		}
+		seen[tenant+"/"+fmt.Sprint(ev["event_type"])] = true
+	}
+	for _, k := range []string{"someone/input_validated", "corp/input_validated", "someone/output_validated"} {
+		if !seen[k] {
+			t.Errorf("expected event %s, saw %v", k, seen)
+		}
+	}
+}
+
+func TestEvents_NoPolicyOmitsTheProfile(t *testing.T) {
+	nats := newFakeNATS(t)
+	srv, _ := restFrom(t, "events:\n  nats_url: nats://"+nats.ln.Addr().String()+"\n")
+	post(t, srv, "/v1/sentinel/validate/input", inputBody("acme", "What is AI?"))
+	deadline := time.Now().Add(3 * time.Second)
+	for len(nats.events()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(nats.events()) == 0 {
+		t.Fatal("no events captured")
+	}
+	for _, ev := range nats.events() {
+		if _, has := ev["profile"]; has {
+			t.Errorf("event without a policy must not carry a profile: %v", ev)
+		}
+	}
 }
