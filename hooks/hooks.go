@@ -28,6 +28,7 @@ type Event struct {
 	Type      EventType
 	RequestID string
 	TenantID  string
+	Profile   string // policy profile that governed the request; empty when no policy is configured
 	TraceID   string
 	SpanID    string
 	Data      map[string]interface{}

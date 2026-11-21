@@ -22,6 +22,7 @@ import (
 	"github.com/zafrem/bastion-sentinel/cache"
 	"github.com/zafrem/bastion-sentinel/config"
 	"github.com/zafrem/bastion-sentinel/engine"
+	"github.com/zafrem/bastion-sentinel/hooks"
 	sentinelv1 "github.com/zafrem/bastion-sentinel/proto"
 	"github.com/zafrem/bastion-sentinel/server"
 	"google.golang.org/grpc"
@@ -411,6 +412,69 @@ func TestEvents_NoPolicyOmitsTheProfile(t *testing.T) {
 	for _, ev := range nats.events() {
 		if _, has := ev["profile"]; has {
 			t.Errorf("event without a policy must not carry a profile: %v", ev)
+		}
+	}
+}
+
+type recHook struct {
+	mu  sync.Mutex
+	got []hooks.Event
+}
+
+func (h *recHook) Name() string { return "rec" }
+func (h *recHook) OnEvent(e hooks.Event) {
+	h.mu.Lock()
+	h.got = append(h.got, e)
+	h.mu.Unlock()
+}
+func (h *recHook) events() []hooks.Event {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]hooks.Event(nil), h.got...)
+}
+
+func waitFor(h *recHook, n int) {
+	for d := time.Now().Add(3 * time.Second); len(h.events()) < n && time.Now().Before(d); {
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestHooks_RESTEventsCarryTheProfile(t *testing.T) {
+	srv, _ := restFrom(t, audiences)
+	h := &recHook{}
+	srv.Hooks().Register(hooks.EventInputValidated, h)
+	srv.Hooks().Register(hooks.EventInjectionBlocked, h)
+
+	post(t, srv, "/v1/sentinel/validate/input", inputBody("corp", borderline))
+	post(t, srv, "/v1/sentinel/validate/input", inputBody("someone", borderline))
+	waitFor(h, 3) // staff: validated; public: blocked + validated
+
+	want := map[string]string{"corp": "staff", "someone": "public"}
+	if len(h.events()) < 3 {
+		t.Fatalf("expected 3 hook events, got %d", len(h.events()))
+	}
+	for _, e := range h.events() {
+		if e.Profile != want[e.TenantID] {
+			t.Errorf("%s for %q: profile %q, want %q", e.Type, e.TenantID, e.Profile, want[e.TenantID])
+		}
+	}
+}
+
+func TestHooks_GRPCEventsCarryTheProfile(t *testing.T) {
+	g := grpcFrom(t, audiences)
+	h := &recHook{}
+	g.Hooks().Register(hooks.EventInputValidated, h)
+	g.Hooks().Register(hooks.EventInjectionBlocked, h)
+	if _, err := g.Validate(context.Background(), protoReq("someone", borderline)); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(h, 1)
+	if len(h.events()) == 0 {
+		t.Fatal("no hook events")
+	}
+	for _, e := range h.events() {
+		if e.Profile != "public" {
+			t.Errorf("%s: profile %q, want public", e.Type, e.Profile)
 		}
 	}
 }

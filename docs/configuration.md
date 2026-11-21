@@ -228,7 +228,7 @@ How it works:
   `ValidateResponse.profile` (field 9) carries the name on `Validate`, `ValidateBatch` and both streams.
 - **Events and metrics carry the profile.** Every event Sentinel publishes for a request has an optional
   top-level `"profile"` next to `tenant_id` (omitted when no profile applied), and the Prometheus request,
-  output, duration and injection-score metrics have a `profile` label.
+  output, duration and injection-score metrics have a `profile` label. In-process hooks receive the same value in `hooks.Event.Profile`.
 - **The cache is safe.** Cached input verdicts are keyed by the query and the metadata, including the tenant,
   so a verdict reached under one profile is never served to a tenant held to another.
 - **Exceptions still apply.** A scoped exception exempts a rule for a tenant inside whichever profile that

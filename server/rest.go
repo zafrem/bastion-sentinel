@@ -249,6 +249,7 @@ func (s *REST) handleValidate(w http.ResponseWriter, r *http.Request) {
 						s.hm.Fire(hooks.Event{
 							Type: hooks.EventIndustryFilterBlocked, RequestID: req.RequestID,
 							TenantID: tenantID,
+							Profile:  resp.Profile,
 							Data:     map[string]interface{}{"filter_id": f.ID(), "reason": decision.Reason},
 							Ctx:      r.Context(),
 						})
@@ -271,6 +272,7 @@ func (s *REST) handleValidate(w http.ResponseWriter, r *http.Request) {
 					s.hm.Fire(hooks.Event{
 						Type: hooks.EventIndustryFilterRedacted, RequestID: req.RequestID,
 						TenantID: tenantID,
+						Profile:  resp.Profile,
 						Data:     map[string]interface{}{"filter_id": f.ID(), "reason": decision.Reason},
 						Ctx:      r.Context(),
 					})
@@ -279,6 +281,7 @@ func (s *REST) handleValidate(w http.ResponseWriter, r *http.Request) {
 					s.hm.Fire(hooks.Event{
 						Type: hooks.EventIndustryFilterFlagged, RequestID: req.RequestID,
 						TenantID: tenantID,
+						Profile:  resp.Profile,
 						Data:     map[string]interface{}{"filter_id": f.ID(), "reason": decision.Reason},
 						Ctx:      r.Context(),
 					})
@@ -315,16 +318,18 @@ func (s *REST) handleValidate(w http.ResponseWriter, r *http.Request) {
 		s.hm.Fire(hooks.Event{
 			Type: hooks.EventInjectionBlocked, RequestID: req.RequestID,
 			TenantID: req.Metadata["tenant_id"], TraceID: tc.TraceID, SpanID: tc.SpanID,
-			Data: map[string]interface{}{"score": resp.PromptCheck.RiskScore},
-			Ctx:  r.Context(),
+			Profile: resp.Profile,
+			Data:    map[string]interface{}{"score": resp.PromptCheck.RiskScore},
+			Ctx:     r.Context(),
 		})
 	} else if resp.PromptCheck.RiskScore > 0.3 {
 		s.pub.Publish(EventInjectionDetected(tc, resp.PromptCheck.RiskScore, resp.PromptCheck.MatchedPatterns))
 		s.hm.Fire(hooks.Event{
 			Type: hooks.EventInjectionDetected, RequestID: req.RequestID,
 			TenantID: req.Metadata["tenant_id"], TraceID: tc.TraceID, SpanID: tc.SpanID,
-			Data: map[string]interface{}{"score": resp.PromptCheck.RiskScore},
-			Ctx:  r.Context(),
+			Profile: resp.Profile,
+			Data:    map[string]interface{}{"score": resp.PromptCheck.RiskScore},
+			Ctx:     r.Context(),
 		})
 	}
 	s.pub.Publish(EventInputValidated(tc, resp.PromptCheck.RiskScore, "full"))
@@ -335,8 +340,9 @@ func (s *REST) handleValidate(w http.ResponseWriter, r *http.Request) {
 	s.hm.Fire(hooks.Event{
 		Type: hooks.EventInputValidated, RequestID: req.RequestID,
 		TenantID: req.Metadata["tenant_id"], TraceID: tc.TraceID, SpanID: tc.SpanID,
-		Data: map[string]interface{}{"score": resp.PromptCheck.RiskScore, "status": string(resp.Status)},
-		Ctx:  r.Context(),
+		Profile: resp.Profile,
+		Data:    map[string]interface{}{"score": resp.PromptCheck.RiskScore, "status": string(resp.Status)},
+		Ctx:     r.Context(),
 	})
 
 	httpStatus := http.StatusOK
