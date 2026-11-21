@@ -9,7 +9,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o sentinel ./cmd/sentinel
 
 # ─── runtime image ────────────────────────────────────────────────────────────
-FROM alpine:3.22
+FROM alpine:3.24
 
 RUN apk add --no-cache ca-certificates tzdata \
     && addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
