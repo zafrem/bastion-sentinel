@@ -309,6 +309,9 @@ func (s *REST) handleValidate(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	s.pub.Publish(EventInputValidated(tc, resp.PromptCheck.RiskScore, "full"))
+	if len(resp.ExceptionsApplied) > 0 {
+		s.pub.Publish(EventExceptionApplied(tc, resp.ExceptionsApplied))
+	}
 	s.pub.Publish(EventPipelineRoutingDecided(tc, "full", "input_validated"))
 	s.hm.Fire(hooks.Event{
 		Type: hooks.EventInputValidated, RequestID: req.RequestID,
@@ -514,12 +517,15 @@ func (s *REST) handleConfigReload(w http.ResponseWriter, r *http.Request) {
 // ─── response types ───────────────────────────────────────────────────────────
 
 type apiResponse struct {
-	RequestID        string       `json:"request_id"`
-	Status           string       `json:"status"`
-	Timestamp        string       `json:"timestamp"`
-	ProcessingTimeMs float64      `json:"processing_time_ms"`
-	Checks           checksJSON   `json:"checks"`
+	RequestID        string        `json:"request_id"`
+	Status           string        `json:"status"`
+	Timestamp        string        `json:"timestamp"`
+	ProcessingTimeMs float64       `json:"processing_time_ms"`
+	Checks           checksJSON    `json:"checks"`
 	ExtractedData    extractedJSON `json:"extracted_data"`
+	// UserNotice is safe to show the end user; the detail above is for the integrator.
+	UserNotice        *types.UserNotice `json:"user_notice,omitempty"`
+	ExceptionsApplied []string          `json:"exceptions_applied,omitempty"`
 }
 
 type checksJSON struct {
@@ -548,10 +554,12 @@ type extractedJSON struct {
 
 func toAPIResponse(resp types.ValidateResponse) apiResponse {
 	return apiResponse{
-		RequestID:        resp.RequestID,
-		Status:           string(resp.Status),
-		Timestamp:        resp.Timestamp.UTC().Format(time.RFC3339Nano),
-		ProcessingTimeMs: resp.ProcessingTimeMs,
+		RequestID:         resp.RequestID,
+		Status:            string(resp.Status),
+		Timestamp:         resp.Timestamp.UTC().Format(time.RFC3339Nano),
+		ProcessingTimeMs:  resp.ProcessingTimeMs,
+		UserNotice:        resp.Notice,
+		ExceptionsApplied: resp.ExceptionsApplied,
 		Checks: checksJSON{
 			PromptInjection: promptCheckJSON{
 				Status:          string(resp.PromptCheck.Status),
@@ -683,6 +691,9 @@ func (s *REST) handleOutputValidate(w http.ResponseWriter, r *http.Request) {
 		action = "pii_redacted"
 	}
 	s.pub.Publish(EventOutputValidated(tc, string(resp.Status), action))
+	if len(resp.ExceptionsApplied) > 0 {
+		s.pub.Publish(EventExceptionApplied(tc, resp.ExceptionsApplied))
+	}
 
 	httpStatus := http.StatusOK
 	if resp.Status == types.OutputStatusBlocked {
@@ -844,11 +855,11 @@ type mappedOutputValidateReq struct {
 	RequestID      string                        `json:"request_id"`
 	TraceID        string                        `json:"trace_id"`
 	LLMResponse    string                        `json:"llm_response"`
-	User           types.UserContext              `json:"user"`
-	Retrieval      types.RetrievalContext         `json:"retrieval"`
-	Options        types.OutputValidationOptions  `json:"options"`
-	KnownMappings  map[string]string              `json:"known_mappings"`  // token→real_value from Vault
-	HoneyTokenRefs []string                       `json:"honey_token_refs,omitempty"` // supplied by orchestrator from Vault
+	User           types.UserContext             `json:"user"`
+	Retrieval      types.RetrievalContext        `json:"retrieval"`
+	Options        types.OutputValidationOptions `json:"options"`
+	KnownMappings  map[string]string             `json:"known_mappings"`             // token→real_value from Vault
+	HoneyTokenRefs []string                      `json:"honey_token_refs,omitempty"` // supplied by orchestrator from Vault
 }
 
 func (s *REST) handleOutputWithMappings(w http.ResponseWriter, r *http.Request) {
@@ -942,6 +953,9 @@ func (s *REST) handleOutputWithMappings(w http.ResponseWriter, r *http.Request) 
 		action = "pii_redacted"
 	}
 	s.pub.Publish(EventOutputValidated(tc, string(resp.Status), action))
+	if len(resp.ExceptionsApplied) > 0 {
+		s.pub.Publish(EventExceptionApplied(tc, resp.ExceptionsApplied))
+	}
 
 	s.log.Info("validate_output_mapped",
 		"request_id", req.RequestID,

@@ -180,6 +180,17 @@ func EventPIIPrevented(tc TraceContext, piiTypes []string, redactions int) Senti
 	return ev
 }
 
+// EventExceptionApplied is emitted when a scoped exception exempted a rule, so
+// the Tracker log shows every time an enforcement control was relaxed.
+func EventExceptionApplied(tc TraceContext, exceptionIDs []string) SentinelEvent {
+	ev := newEvent(tc, "exception_applied", "warning", "audit", map[string]interface{}{
+		"exception_ids": exceptionIDs,
+	})
+	ev.Status = "passed"
+	ev.ActionTaken = "exception_applied"
+	return ev
+}
+
 func EventContentFiltered(tc TraceContext, category string) SentinelEvent {
 	ev := newEvent(tc, "content_filtered", "warning", "security", map[string]interface{}{
 		"category": category,
@@ -194,9 +205,9 @@ func EventContentFiltered(tc TraceContext, category string) SentinelEvent {
 // implying a prior breach.
 func EventHoneyTokenReferenced(tc TraceContext, honeyTokenID, matchedValue string) SentinelEvent {
 	ev := newEvent(tc, "honey_token_referenced", "critical", "security", map[string]interface{}{
-		"honey_token_id":  honeyTokenID,
-		"matched_value":   matchedValue,
-		"detection_layer": "input",
+		"honey_token_id":   honeyTokenID,
+		"matched_value":    matchedValue,
+		"detection_layer":  "input",
 		"detecting_module": sentinelModule,
 	})
 	ev.Status = "detected"
@@ -208,9 +219,9 @@ func EventHoneyTokenReferenced(tc TraceContext, honeyTokenID, matchedValue strin
 // Severity is critical: active data exfiltration.
 func EventHoneyTokenLeaked(tc TraceContext, honeyTokenID, matchedValue string) SentinelEvent {
 	ev := newEvent(tc, "honey_token_leaked", "critical", "security", map[string]interface{}{
-		"honey_token_id":  honeyTokenID,
-		"matched_value":   matchedValue,
-		"detection_layer": "output",
+		"honey_token_id":   honeyTokenID,
+		"matched_value":    matchedValue,
+		"detection_layer":  "output",
 		"detecting_module": sentinelModule,
 	})
 	ev.Status = "detected"

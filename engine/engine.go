@@ -17,6 +17,7 @@ import (
 type Engine struct {
 	promptDetector    *prompt.Detector
 	metadataValidator *metadata.Validator
+	noticeDetail      string
 }
 
 func New(cfg *config.Config) (*Engine, error) {
@@ -35,6 +36,7 @@ func New(cfg *config.Config) (*Engine, error) {
 	return &Engine{
 		promptDetector:    pd,
 		metadataValidator: mv,
+		noticeDetail:      cfg.UserNotice.Detail,
 	}, nil
 }
 
@@ -43,7 +45,10 @@ func (e *Engine) Validate(req types.ValidateRequest) types.ValidateResponse {
 
 	normalized := norm.NFC.String(req.Query)
 
-	promptResult := e.promptDetector.Detect(normalized)
+	tenant, user := req.Metadata["tenant_id"], req.Metadata["user_id"]
+	promptResult := e.promptDetector.DetectExcept(normalized, func(id string) (string, bool) {
+		return allowed("sentinel.in:"+id, tenant, user)
+	})
 	metaResult := e.metadataValidator.Validate(req.Metadata, req.Query)
 
 	status := types.StatusPassed
@@ -51,12 +56,23 @@ func (e *Engine) Validate(req types.ValidateRequest) types.ValidateResponse {
 		status = types.StatusBlocked
 	}
 
+	var notice *types.UserNotice
+	if status == types.StatusBlocked {
+		code := types.CodeInjectionSuspected
+		if promptResult.Status != types.StatusBlocked {
+			code = types.CodeMetadataInvalid
+		}
+		notice = types.NewNotice(e.noticeDetail, types.NoticeBlocked, code, req.RequestID, 0)
+	}
+
 	return types.ValidateResponse{
-		RequestID: req.RequestID,
-		Status:    status,
-		Timestamp: time.Now().UTC(),
-		PromptCheck:   promptResult,
-		MetadataCheck: metaResult,
+		Notice:            notice,
+		ExceptionsApplied: promptResult.ExceptionIDs,
+		RequestID:         req.RequestID,
+		Status:            status,
+		Timestamp:         time.Now().UTC(),
+		PromptCheck:       promptResult,
+		MetadataCheck:     metaResult,
 		ExtractedData: types.ExtractedData{
 			TenantID:     req.Metadata["tenant_id"],
 			UserID:       req.Metadata["user_id"],

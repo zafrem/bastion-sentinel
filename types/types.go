@@ -33,6 +33,10 @@ type ValidateResponse struct {
 	ExtractedData    ExtractedData
 	ProcessingTimeMs float64
 	ErrorMessage     string
+	// Notice is the end-user-safe explanation when the request is blocked.
+	Notice *UserNotice `json:",omitempty"`
+	// ExceptionsApplied lists IDs of exceptions that exempted a rule on this request.
+	ExceptionsApplied []string `json:",omitempty"`
 }
 
 type PromptCheckResult struct {
@@ -40,6 +44,9 @@ type PromptCheckResult struct {
 	RiskScore       float64
 	Method          string
 	MatchedPatterns []string
+	// ExemptedPatterns matched but were ignored because of an active exception.
+	ExemptedPatterns []string `json:",omitempty"`
+	ExceptionIDs     []string `json:",omitempty"`
 }
 
 type MetadataCheckResult struct {

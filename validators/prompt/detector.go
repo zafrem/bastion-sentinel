@@ -33,6 +33,13 @@ func New(cfg config.PromptInjectionConfig, scorer ml.Scorer) (*Detector, error) 
 }
 
 func (d *Detector) Detect(query string) types.PromptCheckResult {
+	return d.DetectExcept(query, nil)
+}
+
+// DetectExcept is Detect, but a pattern for which exempt returns true is
+// ignored when scoring (it is still reported as ExemptedPatterns). exempt may
+// be nil.
+func (d *Detector) DetectExcept(query string, exempt func(patternID string) (exceptionID string, ok bool)) types.PromptCheckResult {
 	normalized := norm.NFC.String(query)
 	lower := strings.ToLower(normalized)
 
@@ -59,6 +66,20 @@ func (d *Detector) Detect(query string) types.PromptCheckResult {
 		}
 	}
 
+	var exemptedPatterns, exceptionIDs []string
+	if exempt != nil && len(matched) > 0 {
+		kept := matched[:0:0]
+		for _, id := range matched {
+			if excID, ok := exempt(id); ok {
+				exemptedPatterns = append(exemptedPatterns, id)
+				exceptionIDs = append(exceptionIDs, excID)
+				continue
+			}
+			kept = append(kept, id)
+		}
+		matched = kept
+	}
+
 	ruleScore := 0.0
 	if len(matched) > 0 {
 		ruleScore = 1.0
@@ -81,10 +102,12 @@ func (d *Detector) Detect(query string) types.PromptCheckResult {
 	}
 
 	return types.PromptCheckResult{
-		Status:          status,
-		RiskScore:       finalScore,
-		Method:          strings.Join(activeMethods, "+"),
-		MatchedPatterns: matched,
+		Status:           status,
+		RiskScore:        finalScore,
+		Method:           strings.Join(activeMethods, "+"),
+		MatchedPatterns:  matched,
+		ExemptedPatterns: exemptedPatterns,
+		ExceptionIDs:     exceptionIDs,
 	}
 }
 

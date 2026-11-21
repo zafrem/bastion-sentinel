@@ -17,6 +17,7 @@ import (
 	"github.com/zafrem/bastion-sentinel/cache"
 	"github.com/zafrem/bastion-sentinel/config"
 	"github.com/zafrem/bastion-sentinel/engine"
+	"github.com/zafrem/bastion-sentinel/exceptions"
 	"github.com/zafrem/bastion-sentinel/formatter"
 	"github.com/zafrem/bastion-sentinel/server"
 	"github.com/zafrem/bastion-sentinel/types"
@@ -702,6 +703,30 @@ func buildServerCmd() *cobra.Command {
 
 			log := server.NewLogger(cfg.Logging, cfg.Version)
 			notifier := server.NewNotifier(cfg.Notifications, log)
+
+			// Scoped exceptions: verified against Tracker's public key and kept in a
+			// local file, so Sentinel enforces from its own copy and keeps working
+			// with Tracker or NATS down. Without a key the feature is off.
+			pubKey := cfg.Exceptions.PublicKey
+			if v := os.Getenv("SENTINEL_EXCEPTIONS_PUBLIC_KEY"); v != "" {
+				pubKey = v
+			}
+			excFile := cfg.Exceptions.File
+			if excFile == "" && pubKey != "" {
+				excFile = "sentinel-exceptions.json"
+			}
+			excClient, err := exceptions.NewClient("sentinel", pubKey, excFile)
+			if err != nil {
+				return fmt.Errorf("exceptions: %w", err)
+			}
+			if excClient.Enabled() {
+				// A new or revoked exception must not wait out the cache TTL.
+				excClient.SetOnChange(func() { _ = val.Flush() })
+				engine.SetExceptions(excClient)
+				excClient.Start(cfg.Events.NATSUrl, 30*time.Second)
+				defer excClient.Close()
+				log.Info("scoped exceptions enabled", "file", excFile)
+			}
 
 			if cfg.Server.AuthToken == "" && os.Getenv("SENTINEL_AUTH_TOKEN") == "" {
 				log.Warn("no auth token configured: REST validation routes and gRPC are unauthenticated and /v1/config admin endpoints are disabled; set server.auth_token or SENTINEL_AUTH_TOKEN")

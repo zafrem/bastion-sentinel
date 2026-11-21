@@ -72,6 +72,7 @@ func (d *PIIDetector) CheckWithMappings(response string, knownMappings map[strin
 			}
 			raw = append(raw, types.PIIIncident{
 				PIIType:       rule.name,
+				RuleIDs:       []string{rule.id},
 				OriginalValue: response[loc[0]:loc[1]],
 				Start:         loc[0],
 				End:           loc[1],
@@ -101,6 +102,7 @@ func (d *PIIDetector) CheckWithMappings(response string, knownMappings map[strin
 				end := start + len(realVal)
 				raw = append(raw, types.PIIIncident{
 					PIIType:       "vault_mapped_pii",
+					RuleIDs:       []string{"vault_mapped_pii"},
 					OriginalValue: realVal,
 					Start:         start,
 					End:           end,
@@ -235,6 +237,15 @@ func mergeGroup(response string, group []types.PIIIncident, end int) types.PIIIn
 	}
 	merged := types.PIIIncident{PIIType: primary.PIIType, Start: primary.Start, End: end, ActionTaken: "masked"}
 	for _, g := range group {
+		for _, id := range g.RuleIDs {
+			dup := false
+			for _, have := range merged.RuleIDs {
+				dup = dup || have == id
+			}
+			if !dup {
+				merged.RuleIDs = append(merged.RuleIDs, id)
+			}
+		}
 		if g.ActionTaken == "redacted" {
 			merged.ActionTaken = "redacted"
 		}

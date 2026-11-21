@@ -19,6 +19,25 @@ type Config struct {
 	Features           FeaturesConfig           `yaml:"features"`
 	Events             EventsConfig             `yaml:"events"`
 	Industry           IndustryConfig           `yaml:"industry"`
+	UserNotice         UserNoticeConfig         `yaml:"user_notice"`
+	Exceptions         ExceptionsConfig         `yaml:"exceptions"`
+}
+
+// UserNoticeConfig controls the explanation shown to end users on a block or mask.
+type UserNoticeConfig struct {
+	// Detail is "category" (default: say why, by category) or "minimal" (generic).
+	Detail string `yaml:"detail"`
+}
+
+// ExceptionsConfig enables scoped exemptions signed by Tracker. Off unless a
+// public key is set; the module then works from its own persisted copy even
+// when Tracker or NATS is unreachable.
+type ExceptionsConfig struct {
+	// PublicKey is Tracker's base64 Ed25519 public key (env SENTINEL_EXCEPTIONS_PUBLIC_KEY).
+	PublicKey string `yaml:"public_key"`
+	// File is where verified exceptions are persisted, and where an exported
+	// envelope can be dropped for a module with no connection to Tracker.
+	File string `yaml:"file"`
 }
 
 // IndustryConfig holds the industry-specific filter extension configuration.

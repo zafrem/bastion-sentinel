@@ -70,6 +70,10 @@ type PIIIncident struct {
 	End           int    // byte offset in original response
 	ActionTaken   string // "redacted", "masked", "blocked"
 	Replacement   string `json:"Replacement,omitempty"` // optional custom replacement (e.g. Vault token)
+	// RuleIDs are the stable IDs of the rules behind this finding (more than one
+	// when overlapping matches were merged). Exceptions are keyed on these, not
+	// on PIIType, which is a display name.
+	RuleIDs []string `json:"RuleIDs,omitempty"`
 }
 
 // PIICheckResult aggregates PII detection outcomes.
@@ -136,4 +140,9 @@ type OutputValidateResponse struct {
 	Modifications     []Modification
 	ProcessingTimeMs  float64
 	ErrorMessage      string
+	// Notice is the end-user-safe explanation when the response is blocked,
+	// masked or flagged. Detailed reasons stay in Checks and the Tracker log.
+	Notice *UserNotice `json:",omitempty"`
+	// ExceptionsApplied lists IDs of exceptions that exempted a rule on this response.
+	ExceptionsApplied []string `json:",omitempty"`
 }
