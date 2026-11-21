@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/zafrem/bastion-sentinel/config"
@@ -11,6 +12,13 @@ import (
 // OutputEngine orchestrates all Sentinel-OUT validators (PII re-emergence,
 // hallucination, content filter, permission boundary, format).
 type OutputEngine struct {
+	byProfile map[string]*outputEngine // "" is the base configuration
+	tenants   map[string]string
+	def       string
+}
+
+// outputEngine is the validators of one profile.
+type outputEngine struct {
 	pii          *output.PIIDetector
 	halluc       *output.HallucinationDetector
 	content      *output.ContentFilter
@@ -23,6 +31,28 @@ type OutputEngine struct {
 // NewOutputEngine builds an OutputEngine from the supplied configuration.
 // Returns an error if any compiled regex pattern is invalid.
 func NewOutputEngine(cfg *config.Config) (*OutputEngine, error) {
+	if err := cfg.CheckPolicy(); err != nil {
+		return nil, err
+	}
+	e := &OutputEngine{byProfile: map[string]*outputEngine{}, tenants: cfg.Policy.Tenants, def: cfg.Policy.DefaultProfile}
+	for _, name := range append([]string{""}, cfg.ProfileNames()...) {
+		pc, err := cfg.ProfileConfig(name)
+		if err != nil {
+			return nil, err
+		}
+		oe, err := newOutputEngine(pc)
+		if err != nil {
+			if name != "" {
+				return nil, fmt.Errorf("profile %q: %w", name, err)
+			}
+			return nil, err
+		}
+		e.byProfile[name] = oe
+	}
+	return e, nil
+}
+
+func newOutputEngine(cfg *config.Config) (*outputEngine, error) {
 	pii, err := output.NewPIIDetector(cfg.OutputValidation.PIIReemergence)
 	if err != nil {
 		return nil, err
@@ -31,7 +61,7 @@ func NewOutputEngine(cfg *config.Config) (*OutputEngine, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &OutputEngine{
+	return &outputEngine{
 		pii:          pii,
 		halluc:       output.NewHallucinationDetector(cfg.OutputValidation.Hallucination),
 		content:      content,
@@ -44,7 +74,18 @@ func NewOutputEngine(cfg *config.Config) (*OutputEngine, error) {
 
 // Validate runs all enabled checks against the LLM response in req and returns
 // a sanitized (or blocked) OutputValidateResponse.
+// Validate holds the response to the profile the request's tenant maps to and says which one.
 func (e *OutputEngine) Validate(req types.OutputValidateRequest) types.OutputValidateResponse {
+	profile := e.def
+	if p, ok := e.tenants[req.User.TenantID]; ok {
+		profile = p
+	}
+	resp := e.byProfile[profile].Validate(req)
+	resp.Profile = profile
+	return resp
+}
+
+func (e *outputEngine) Validate(req types.OutputValidateRequest) types.OutputValidateResponse {
 	start := time.Now()
 
 	opts := normaliseOptions(req.Options)

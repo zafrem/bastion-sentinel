@@ -21,6 +21,7 @@ type Config struct {
 	Industry           IndustryConfig           `yaml:"industry"`
 	UserNotice         UserNoticeConfig         `yaml:"user_notice"`
 	Exceptions         ExceptionsConfig         `yaml:"exceptions"`
+	Policy             PolicyConfig             `yaml:"policy"`
 }
 
 // UserNoticeConfig controls the explanation shown to end users on a block or mask.
@@ -521,6 +522,9 @@ func Load(path string) (*Config, error) {
 	}
 	cfg := Default()
 	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, err
+	}
+	if err := cfg.CheckPolicy(); err != nil {
 		return nil, err
 	}
 	return cfg, nil

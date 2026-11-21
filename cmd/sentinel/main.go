@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -656,10 +657,35 @@ func buildConfigCmd() *cobra.Command {
 			Short: "Validate a configuration file",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				if err := config.Validate(args[0]); err != nil {
+				cfg, err := config.Load(args[0])
+				if err != nil {
 					return fmt.Errorf("invalid config: %w", err)
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "✅ Config %q is valid\n", args[0])
+				// Build the engines as the server would, so a profile that cannot start (for example a
+				// bad judge setting) is reported here and not at deploy time.
+				if _, err := engine.New(cfg); err != nil {
+					return fmt.Errorf("invalid config: %w", err)
+				}
+				if _, err := engine.NewOutputEngine(cfg); err != nil {
+					return fmt.Errorf("invalid config: output: %w", err)
+				}
+				out := cmd.OutOrStdout()
+				fmt.Fprintf(out, "✅ Config %q is valid\n", args[0])
+				if names := cfg.ProfileNames(); len(names) > 0 {
+					def := cfg.Policy.DefaultProfile
+					if def == "" {
+						def = "(base configuration)"
+					}
+					fmt.Fprintf(out, "   policy profiles: %s; unlisted tenants get: %s\n", strings.Join(names, ", "), def)
+					tenants := make([]string, 0, len(cfg.Policy.Tenants))
+					for t := range cfg.Policy.Tenants {
+						tenants = append(tenants, t)
+					}
+					sort.Strings(tenants)
+					for _, t := range tenants {
+						fmt.Fprintf(out, "   tenant %s -> %s\n", t, cfg.Policy.Tenants[t])
+					}
+				}
 				return nil
 			},
 		},

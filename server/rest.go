@@ -543,6 +543,8 @@ type apiResponse struct {
 	// UserNotice is safe to show the end user; the detail above is for the integrator.
 	UserNotice        *types.UserNotice `json:"user_notice,omitempty"`
 	ExceptionsApplied []string          `json:"exceptions_applied,omitempty"`
+	// Profile is the policy profile the request was held to (empty: the base configuration).
+	Profile string `json:"profile,omitempty"`
 }
 
 type checksJSON struct {
@@ -577,6 +579,7 @@ func toAPIResponse(resp types.ValidateResponse) apiResponse {
 		ProcessingTimeMs:  resp.ProcessingTimeMs,
 		UserNotice:        resp.Notice,
 		ExceptionsApplied: resp.ExceptionsApplied,
+		Profile:           resp.Profile,
 		Checks: checksJSON{
 			PromptInjection: promptCheckJSON{
 				Status:          string(resp.PromptCheck.Status),

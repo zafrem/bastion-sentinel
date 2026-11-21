@@ -148,4 +148,6 @@ type OutputValidateResponse struct {
 	Notice *UserNotice `json:",omitempty"`
 	// ExceptionsApplied lists IDs of exceptions that exempted a rule on this response.
 	ExceptionsApplied []string `json:",omitempty"`
+	// Profile is the policy profile this response was held to; empty for the base configuration.
+	Profile string `json:",omitempty"`
 }

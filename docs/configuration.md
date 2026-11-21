@@ -178,6 +178,68 @@ slow or answers off-format, the query is scored by the rules and the heuristic a
 `backend`, `provider`, or a missing `endpoint`/`model` stops startup, and on `SIGHUP` keeps the previous
 configuration.
 
+### `policy`
+
+Policy profiles hold different callers to different controls with one running Sentinel, for example staff
+and the public. Without a `policy` block there is one set of controls and nothing changes.
+
+```yaml
+policy:
+  default_profile: external       # for tenants not listed below ("" = the base configuration)
+  tenants:                        # tenant_id -> profile
+    internal-corp: internal
+    public-web: external
+  profiles:
+    internal:
+      user_notice: { detail: category }
+    external:
+      user_notice: { detail: minimal }
+      prompt_injection:
+        ml_model: { backend: llm, provider: ollama, endpoint: "http://localhost:11434", model: "qwen3.5:9b" }
+      output_validation:
+        hallucination: { block_on_low_score: true }
+```
+
+| Field | Description |
+|-------|-------------|
+| `default_profile` | Profile for any tenant not in `tenants`, including a missing or empty `tenant_id`. Empty means the **base configuration**, which is the lenient one: set this to your strictest profile if you serve tenants you have not listed |
+| `tenants` | Map of `tenant_id` to profile name. Matching is exact (case and whitespace included) |
+| `profiles` | Named overlays. Names are lower-case letters, digits, `-` and `_` (max 64) |
+
+How it works:
+
+- **A profile is a partial overlay.** It names only what differs; everything else is inherited from the base.
+  It may set only `prompt_injection`, `metadata_validation`, `output_validation` and `user_notice`. Anything
+  else (`server`, `cache`, `events`, `exceptions`, ...) is global and is rejected, as is any unknown or
+  misspelled key. A **list** in an overlay (for example `regex_rules`) replaces the base list instead of
+  extending it. A profile never changes the base or another profile.
+- **The operator chooses, the request does not.** The profile comes from the request's `tenant_id` and the
+  `tenants` map. A metadata field cannot select or override a profile, since a caller that could choose would
+  choose the weakest. The profile is therefore only as trustworthy as `tenant_id`: set it from your
+  authenticated session, not from user input.
+- **Both directions follow the profile.** Input validation uses the tenant in `metadata.tenant_id`; output
+  validation uses `user.TenantID`. Use the same tenant on both calls.
+- **Everything is built at startup.** Every profile is compiled when the server starts or reloads. A profile
+  that cannot be built (a bad regex, an LLM backend without `endpoint`) stops startup and, on `SIGHUP` or
+  `POST /v1/config/reload`, keeps the previous configuration. `sentinel config validate <file>` does the same
+  build and prints the tenant-to-profile mapping.
+- **The response says which profile applied.** REST input responses carry `"profile"`, and output responses
+  `"Profile"`; both are omitted when no profile applied. The gRPC API routes the same way but its response
+  messages do not carry the profile name.
+- **The cache is safe.** Cached input verdicts are keyed by the query and the metadata, including the tenant,
+  so a verdict reached under one profile is never served to a tenant held to another.
+- **Exceptions still apply.** A scoped exception exempts a rule for a tenant inside whichever profile that
+  tenant is held to. It exempts a *rule*, not the scorer: if a profile lowers
+  `prompt_injection.scoring.block_threshold` (for example to 0.5), the built-in scorer can block borderline
+  text by itself (about 0.57 to 0.67 for talk about jailbreaks or "ignore ... previous"), and exempting the
+  rule will not release it.
+- **`GET /v1/config`** shows `Policy.DefaultProfile` and `Policy.Tenants`; the overlay bodies are not
+  serialised.
+
+Choosing the levers: lowering `block_threshold` to 0.5 was measured to refuse six harmless prompts for one
+extra attack caught with the built-in scorer. Turning on the LLM judge for the stricter profile caught all
+six hard attacks and refused nothing, at about 1.5 s per query. Measure before you pick.
+
 ### `cache`
 
 | Field | Default | Description |
