@@ -58,25 +58,46 @@ func compileOrDefault(pattern, def string) *regexp.Regexp {
 // Check returns a grounding score and list of unverified claims.
 func (d *HallucinationDetector) Check(response string, sources []string) types.HallucinationCheckResult {
 	claims := d.extractClaims(response)
-	if len(claims) == 0 || len(sources) == 0 {
-		return types.HallucinationCheckResult{
-			Status:         "PASSED",
-			GroundingScore: 1.0,
-			Method:         "heuristic",
-		}
+	method := "heuristic"
+	if len(sources) == 0 {
+		return types.HallucinationCheckResult{Status: "PASSED", GroundingScore: 1.0, Method: method}
 	}
 
-	grounded := 0
+	score := 1.0
+	haveSignal := false
 	var ungrounded []string
-	for _, c := range claims {
-		if isGrounded(c, sources) {
-			grounded++
-		} else {
-			ungrounded = append(ungrounded, c.value)
+	if len(claims) > 0 {
+		grounded := 0
+		for _, c := range claims {
+			if isGrounded(c, sources) {
+				grounded++
+			} else {
+				ungrounded = append(ungrounded, c.value)
+			}
+		}
+		score = float64(grounded) / float64(len(claims))
+		haveSignal = true
+	}
+	// Words as well as numbers: the answer is only as grounded as its weaker part.
+	if d.cfg.ContentSupport {
+		minWords := d.cfg.MinContentWords
+		if minWords <= 0 {
+			minWords = 3
+		}
+		if support, missing, ok := contentSupport(response, sources, minWords); ok {
+			haveSignal = true
+			method = "heuristic+content"
+			if support < score {
+				score = support
+			}
+			for _, w := range missing {
+				ungrounded = append(ungrounded, "unsupported:"+w)
+			}
 		}
 	}
-
-	score := float64(grounded) / float64(len(claims))
+	if !haveSignal {
+		return types.HallucinationCheckResult{Status: "PASSED", GroundingScore: 1.0, Method: method}
+	}
 
 	status := "PASSED"
 	switch {
@@ -90,7 +111,7 @@ func (d *HallucinationDetector) Check(response string, sources []string) types.H
 		Status:           status,
 		GroundingScore:   score,
 		UngroundedClaims: ungrounded,
-		Method:           "heuristic",
+		Method:           method,
 	}
 }
 

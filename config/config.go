@@ -228,6 +228,13 @@ type HallucinationConfig struct {
 	AddDisclaimer      bool                  `yaml:"add_disclaimer"`
 	BlockOnLowScore    bool                  `yaml:"block_on_low_score"`
 	ClaimPatterns      ClaimPatternsConfig   `yaml:"claim_patterns"`
+	// ContentSupport also checks the ordinary words of an answer, not only its numbers: the share
+	// of the answer's content words that appear in the sources is a grounding score, compared with
+	// the same thresholds above. It catches an answer that is on a different subject from its
+	// sources but has no digits. MinContentWords is how many content words an answer needs before
+	// this applies, so short answers and pleasantries are never judged (default 3).
+	ContentSupport  bool `yaml:"content_support"`
+	MinContentWords int  `yaml:"min_content_words"`
 }
 
 // ClaimPatternsConfig holds the regexes used to extract factual claims (numbers,
@@ -449,6 +456,8 @@ func Default() *Config {
 				LowScoreThreshold:  0.3,
 				AddDisclaimer:      true,
 				BlockOnLowScore:    false,
+				ContentSupport:     true,
+				MinContentWords:    3,
 			},
 			ContentFilter: ContentFilterConfig{
 				Enabled: true,
