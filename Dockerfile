@@ -1,4 +1,4 @@
-FROM golang:1.23-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
@@ -9,9 +9,10 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o sentinel ./cmd/sentinel
 
 # ─── runtime image ────────────────────────────────────────────────────────────
-FROM alpine:3.20
+FROM alpine:3.22
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
 
 WORKDIR /app
 
@@ -19,6 +20,8 @@ COPY --from=builder /app/sentinel /usr/local/bin/sentinel
 
 # Optional: mount ONNX models at runtime via volume
 RUN mkdir -p /models /etc/sentinel
+
+USER app
 
 EXPOSE 8080 9090
 
