@@ -2,11 +2,12 @@ package output
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
-	"gopkg.in/yaml.v3"
 	"github.com/zafrem/bastion-sentinel/config"
+	"gopkg.in/yaml.v3"
 )
 
 // PIIExternalPattern represents the YAML format used by pii-pattern-engine.
@@ -52,11 +53,20 @@ func LoadExternalPatterns(dir string) ([]config.PIIPatternConfig, error) {
 		}
 	}
 
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	// Read through an os.Root so a symlink inside the directory cannot point the loader at a file outside
+	// it, and the directory cannot be swapped for another between the walk and the read (CWE-367).
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, fmt.Errorf("open pattern directory %s: %w", dir, err)
+	}
+	defer root.Close()
+	rootFS := root.FS()
+
+	err = fs.WalkDir(rootFS, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() {
+		if d.IsDir() {
 			return nil
 		}
 		ext := filepath.Ext(path)
@@ -64,9 +74,9 @@ func LoadExternalPatterns(dir string) ([]config.PIIPatternConfig, error) {
 			return nil
 		}
 
-		data, err := os.ReadFile(path) // #nosec G304 -- path comes from operator config or CLI, not request input
+		data, err := fs.ReadFile(rootFS, path)
 		if err != nil {
-			return fmt.Errorf("failed to read %s: %w", path, err)
+			return fmt.Errorf("failed to read %s: %w", filepath.Join(dir, path), err)
 		}
 
 		var extCfg PIIExternalConfig
@@ -93,7 +103,7 @@ func LoadExternalPatterns(dir string) ([]config.PIIPatternConfig, error) {
 		for i, p := range extCfg.PIIConfig.Patterns {
 			patterns = append(patterns, convertPattern(p, fmt.Sprintf("%s-%d", filepath.Base(path), i)))
 		}
-		
+
 		// some files might just have 'patterns:' at the root level without pii_config
 		if len(extCfg.PIIConfig.Patterns) == 0 {
 			var rootPatterns struct {
@@ -115,7 +125,6 @@ func LoadExternalPatterns(dir string) ([]config.PIIPatternConfig, error) {
 
 	return patterns, nil
 }
-
 
 func convertPattern(p PIIExternalPattern, fallbackID string) config.PIIPatternConfig {
 	severity := p.Policy.Severity
