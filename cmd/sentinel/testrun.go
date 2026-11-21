@@ -95,7 +95,7 @@ Timestamps set to "NOW" are substituted with the current UTC time at run time.`,
 }
 
 func runFixtureFile(eng *engine.Engine, path string, verbose, stopOnFail bool) (passed, failed int, err error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- path comes from operator config or CLI, not request input
 	if err != nil {
 		return 0, 0, fmt.Errorf("open %s: %w", path, err)
 	}

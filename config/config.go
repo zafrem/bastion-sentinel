@@ -435,7 +435,7 @@ func Default() *Config {
 }
 
 func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path comes from operator config or CLI, not request input
 	if err != nil {
 		return nil, err
 	}

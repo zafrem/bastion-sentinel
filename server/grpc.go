@@ -387,7 +387,7 @@ func (g *GRPC) ValidateBatch(_ context.Context, req *sentinelv1.BatchRequest) (*
 		}
 	}
 	return &sentinelv1.BatchResponse{
-		Total:   int32(len(results)),
+		Total:   int32(len(results)), // #nosec G115 -- bounded by the request batch size
 		Passed:  passed,
 		Blocked: blocked,
 		Results: results,

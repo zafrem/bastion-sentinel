@@ -288,14 +288,14 @@ func (s *REST) handleValidate(w http.ResponseWriter, r *http.Request) {
 	requestDurationMs.Observe(resp.ProcessingTimeMs)
 	injectionScore.Observe(resp.PromptCheck.RiskScore)
 	s.log.Info("validate",
-		"request_id", resp.RequestID,
+		"request_id", logSafe(resp.RequestID),
 		"status", resp.Status,
 		"processing_time_ms", resp.ProcessingTimeMs,
 		"prompt_injection_score", resp.PromptCheck.RiskScore,
 		"metadata_valid", resp.MetadataCheck.Status == types.StatusPassed,
 		"method", resp.PromptCheck.Method,
-		"tenant_id", req.Metadata["tenant_id"],
-		"user_id", req.Metadata["user_id"],
+		"tenant_id", logSafe(req.Metadata["tenant_id"]),
+		"user_id", logSafe(req.Metadata["user_id"]),
 	)
 	s.notifier.Notify(resp)
 
@@ -687,7 +687,7 @@ func (s *REST) handleOutputValidate(w http.ResponseWriter, r *http.Request) {
 	})
 
 	s.log.Info("validate_output",
-		"request_id", resp.RequestID,
+		"request_id", logSafe(resp.RequestID),
 		"status", resp.Status,
 		"processing_time_ms", resp.ProcessingTimeMs,
 		"pii_incidents", resp.Checks.PIICheck.RedactionsApplied,
@@ -850,7 +850,7 @@ func (s *REST) handleValidateWithContext(w http.ResponseWriter, r *http.Request)
 	s.pub.Publish(EventPipelineRoutingDecided(tc, "contextual", "input_validated"))
 
 	s.log.Info("validate_contextual",
-		"request_id", req.RequestID,
+		"request_id", logSafe(req.RequestID),
 		"query_status", queryResp.Status,
 		"final_status", finalStatus,
 		"doc_count", len(req.RetrievedDocuments),
@@ -981,7 +981,7 @@ func (s *REST) handleOutputWithMappings(w http.ResponseWriter, r *http.Request) 
 	}
 
 	s.log.Info("validate_output_mapped",
-		"request_id", req.RequestID,
+		"request_id", logSafe(req.RequestID),
 		"status", resp.Status,
 		"standard_redactions", resp.Checks.PIICheck.RedactionsApplied-extraRedactions,
 		"mapping_redactions", extraRedactions,

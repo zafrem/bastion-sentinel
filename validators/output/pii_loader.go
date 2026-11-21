@@ -64,7 +64,7 @@ func LoadExternalPatterns(dir string) ([]config.PIIPatternConfig, error) {
 			return nil
 		}
 
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) // #nosec G304 -- path comes from operator config or CLI, not request input
 		if err != nil {
 			return fmt.Errorf("failed to read %s: %w", path, err)
 		}

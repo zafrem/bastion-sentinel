@@ -188,7 +188,7 @@ type batchInput struct {
 }
 
 func runBatch(eng *engine.Engine, inputPath string, out *os.File, workers int) error {
-	f, err := os.Open(inputPath)
+	f, err := os.Open(inputPath) // #nosec G304 -- path comes from operator config or CLI, not request input
 	if err != nil {
 		return fmt.Errorf("open input file: %w", err)
 	}
@@ -424,7 +424,7 @@ func buildValidateOutputCmd() *cobra.Command {
 
 			text := llmResponse
 			if inputFile != "" {
-				data, err := os.ReadFile(inputFile)
+				data, err := os.ReadFile(inputFile) // #nosec G304 -- path comes from operator config or CLI, not request input
 				if err != nil {
 					return fmt.Errorf("read input file: %w", err)
 				}
