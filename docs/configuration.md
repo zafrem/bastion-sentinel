@@ -29,8 +29,8 @@ prompt_injection:
   regex_rules:           # compiled on startup; hot-reloaded on SIGHUP or POST /v1/config/reload
     - id: pi-001
       pattern: "(?i)ignore\\s+all\\s+previous"
-      severity: critical  # "critical" | "high" | "medium"
-    # ... 25 rules ship by default (English + Korean)
+      severity: critical  # "critical" | "high" | "medium" | "low" (see Scoring)
+    # ... 45 rules ship by default (English + Korean)
 
   keyword_rules:
     - id: kw-001
@@ -40,8 +40,16 @@ prompt_injection:
 
   ml_model:
     enabled: true
-    path: /models/injection-detector.onnx   # path to ONNX model file
-    threshold: 0.7                          # ML-only block threshold (not used by stub)
+    backend: heuristic        # "heuristic" (built in, no network) | "llm" (ask a language model)
+    # Only for backend: llm — see "prompt_injection.ml_model" below
+    # provider: ollama        # "ollama" | "openai" (any OpenAI-compatible API)
+    # endpoint: http://localhost:11434
+    # model: qwen3.5:9b
+    # api_key_env: JUDGE_API_KEY   # name of an environment variable, not the key
+    # timeout_ms: 8000
+    # cache_size: 1000        # -1 turns the cache off
+    path: /models/injection-detector.onnx   # unused: neither backend loads a model file
+    threshold: 0.7                          # unused
 
   scoring:
     method: max           # "max" or "weighted_avg"
@@ -136,7 +144,39 @@ features:
 | `method` | `max` | `max`: `max(ruleScore, mlScore)`. `weighted_avg`: `ruleScore * 0.6 + mlScore * 0.4` |
 | `block_threshold` | `0.7` | Final score ≥ this value → BLOCKED |
 
-Any regex or keyword match sets `ruleScore = 1.0`, which always exceeds the threshold.
+A matching rule contributes by severity: `critical` and `high` (and a rule with no or an unknown
+severity) count 1.0 and decide on their own; `medium` counts 0.5; `low` counts 0.25. With several
+matches, `ruleScore` is the strongest one plus a quarter of the others, capped at 1.0. So one `medium`
+rule alone (0.5) stays under the default 0.7 threshold, and two together (0.75) block. Use `medium` for
+rules that only hint at an attack, such as a mention of the topic.
+
+Rules are matched against the query as sent and against decoded or normalised views of it: base64, hex
+and URL-encoded text (up to two layers), text with invisible characters removed, and full-width letters
+folded to ASCII. A match inside decoded text is reported as `decoded(base64)` etc. in `method`. Only the
+first 64 KiB of a query is scanned.
+
+### `prompt_injection.ml_model`
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `enabled` | `true` | Run the scorer. `false` disables it (rules only) |
+| `backend` | `heuristic` | `heuristic`: built-in feature scorer, no network. `llm`: also asks a language model and takes the higher score |
+| `provider` | `ollama` | `llm` only. `ollama` (`/api/chat`) or `openai` (`/chat/completions`) |
+| `endpoint` | — | `llm` only, required. Base URL, e.g. `http://localhost:11434` or `https://host/v1` |
+| `model` | — | `llm` only, required |
+| `api_key_env` | — | Name of an environment variable holding a bearer token |
+| `timeout_ms` | `8000` | Per request |
+| `cache_size` | `1000` | Verdicts kept in memory (LRU, keyed by a hash of the text); `-1` disables |
+
+With `backend: llm` the model is asked, for each query the rules did not already block, whether it is an
+injection attempt. It returns `{"injection": true|false, "score": 0..1}`; the boolean is authoritative
+(a contradicting score is capped at 0.5), and any reply that is not exactly that JSON is an error. The
+final score is `max(heuristic, model)`, so the model only adds detections. If the model is unreachable, too
+slow or answers off-format, the query is scored by the rules and the heuristic and `method` contains
+`ml-unavailable`; when the rules already blocked, the model is not called (`ml-skipped`). Only the first
+4 000 characters are sent to the model, and the query text leaves Sentinel for `endpoint`. An invalid
+`backend`, `provider`, or a missing `endpoint`/`model` stops startup, and on `SIGHUP` keeps the previous
+configuration.
 
 ### `cache`
 
@@ -212,100 +252,100 @@ output_validation:
 
   pii_reemergence:
     enabled: true
+    honor_report_action: true   # rules declared "report" are listed under Reported but not masked
+    always_enforce: []          # rule IDs masked even if declared "report"
     patterns:
       - id: pii-001
         name: korean_name
         pattern: "[가-힣]{2,4}\\s*(?:씨|님|선생님|교수님|박사님)"
         severity: high
-        action: masked
+        action: redact
       - id: pii-002
         name: korean_rrn
         pattern: "\\b\\d{6}-[1-4]\\d{6}\\b"
         severity: critical
-        action: redacted
+        action: redact
       - id: pii-003
         name: korean_mobile
         pattern: "\\b01[016789]-\\d{3,4}-\\d{4}\\b"
         severity: high
-        action: masked
+        action: redact
       - id: pii-004
         name: email
         pattern: "[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}"
         severity: high
-        action: redacted
+        action: redact
       - id: pii-005
         name: credit_card
         pattern: "\\b(?:4[0-9]{12}(?:[0-9]{3})?|[25][1-7][0-9]{14}|6(?:011|5[0-9][0-9])[0-9]{12}|3[47][0-9]{13}|3(?:0[0-5]|[68][0-9])[0-9]{11}|(?:2131|1800|35\\d{3})\\d{11})[\\s\\-]?\\b"
         severity: critical
-        action: redacted
+        action: redact
       - id: pii-006
         name: leaked_token
         pattern: "USER_DATA_[A-Za-z0-9]{16}"
         severity: critical
-        action: redacted
+        action: redact
 
   hallucination:
     enabled: true
-    grounding_threshold: 0.5   # grounding score below this adds a disclaimer
-    low_score_threshold: 0.3   # grounding score below this returns SUSPICIOUS
-    add_disclaimer: true       # prepend disclaimer when grounding score < grounding_threshold
+    grounding_threshold: 0.5   # grounding score below this is SUSPICIOUS (disclaimer added)
+    low_score_threshold: 0.3   # grounding score below this is FAILED
+    add_disclaimer: true       # append a disclaimer when SUSPICIOUS or FAILED
+    block_on_low_score: false  # block instead when FAILED
+    content_support: true      # also score the answer's ordinary words against the sources
+    min_content_words: 3       # answers with fewer content words are not judged this way
 
-  content_filter:
+  content_filter:      # severity "critical" blocks the response; lower severities warn
     enabled: true
     patterns:
       - id: cf-001
         name: openai_api_key
         pattern: "sk-[A-Za-z0-9]{32,}"
         severity: critical
-        action: block
       - id: cf-002
         name: github_token
         pattern: "ghp_[A-Za-z0-9]{36}"
         severity: critical
-        action: block
       - id: cf-003
         name: aws_access_key
         pattern: "AKIA[0-9A-Z]{16}"
         severity: critical
-        action: block
       - id: cf-004
         name: internal_path
         pattern: "(?:/etc/|/var/|/home/|/root/|/srv/)[a-zA-Z0-9/_\\-.]+"
         severity: medium
-        action: warn
 
   permission_check:
     enabled: true
-    access_levels:
-      full:        0   # most permissive — sees all detail
-      read:        1
-      anonymized:  2
-      k_anonymized: 3
-      slice:       4
-      aggregated:  5   # most restricted — no specific values
+    # specific_amount_pattern: ""   # regex for concrete amounts that imply full access (default built in)
+    # Access levels, most to least permissive: full, read, anonymized, k_anonymized, slice, aggregated.
 
   format:
-    enabled: true
-    min_length: 10        # shorter responses are rejected
-    max_length: 10000     # longer responses are rejected
-    require_utf8: true
-    allow_control_chars: false   # \n \r \t are always permitted; other control chars are not
+    min_length: 1         # fewer characters (after trimming whitespace) is rejected; counts characters, not bytes
+    max_length: 10000     # more characters is rejected
+    utf8_required: true
+    no_control_chars: true   # \n \r \t are always permitted; other control chars are not
 ```
 
 | Sub-section | Field | Default | Description |
 |-------------|-------|---------|-------------|
 | `pii_reemergence` | `enabled` | `true` | Enable PII detection and sanitisation |
-| `pii_reemergence` | `patterns` | 6 patterns | Regex pattern list; `action` is `redacted` or `masked` |
+| `pii_reemergence` | `patterns` | 6 patterns | Regex pattern list; `action` is `redact` (default) or `report` |
+| `pii_reemergence` | `honor_report_action` | `true` | Matches of rules whose `action` is `report` (low-signal patterns such as bare numbers, dates, common names) are detected and listed in `Reported` for audit, but the text is not changed. `false` masks every match |
+| `pii_reemergence` | `always_enforce` | `[]` | Rule IDs that are masked even when their `action` is `report` |
 | `hallucination` | `enabled` | `true` | Enable hallucination grounding check |
 | `hallucination` | `grounding_threshold` | `0.5` | Score below this adds a disclaimer to the response |
-| `hallucination` | `low_score_threshold` | `0.3` | Score below this marks the check SUSPICIOUS |
-| `hallucination` | `add_disclaimer` | `true` | Prepend disclaimer text when grounding is low |
+| `hallucination` | `low_score_threshold` | `0.3` | Score below this marks the check FAILED (below `grounding_threshold` is SUSPICIOUS) |
+| `hallucination` | `add_disclaimer` | `true` | Append disclaimer text when grounding is low |
+| `hallucination` | `block_on_low_score` | `false` | Block instead of disclaiming when the check is FAILED |
+| `hallucination` | `content_support` | `true` | Score the share of the answer's content words found in the sources (first four letters, Latin script), alongside the number check; the lower score applies. Needs `min_content_words` |
+| `hallucination` | `min_content_words` | `3` | Answers with fewer content words (stopwords excluded) are not judged by content support |
 | `content_filter` | `enabled` | `true` | Enable credential/path content filtering |
-| `content_filter` | `patterns` | 4 patterns | Regex pattern list; `action` is `block` or `warn` |
+| `content_filter` | `patterns` | 9 patterns | Regex pattern list: credentials and internal paths, plus abuse aimed at the user, threats and eliminationist hate. `critical` blocks; lower severities warn |
 | `permission_check` | `enabled` | `true` | Enable access-level boundary enforcement |
-| `format` | `min_length` | `10` | Minimum response length in characters |
+| `format` | `min_length` | `1` | Minimum response length in characters, after trimming whitespace (rejects empty output only) |
 | `format` | `max_length` | `10000` | Maximum response length in characters |
-| `format` | `require_utf8` | `true` | Reject responses with invalid UTF-8 sequences |
+| `format` | `utf8_required` | `true` | Reject responses with invalid UTF-8 sequences |
 
 ---
 
