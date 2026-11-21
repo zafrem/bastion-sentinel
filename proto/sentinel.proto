@@ -38,6 +38,8 @@ message ValidateResponse {
   float         processing_time_ms = 6;
   string        error_message      = 7;
   string        timestamp          = 8;
+  // Policy profile the caller was held to; empty when no policy is configured.
+  string        profile            = 9;
 
   enum Status {
     UNKNOWN = 0;

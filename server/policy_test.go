@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -15,7 +16,9 @@ import (
 	"github.com/zafrem/bastion-sentinel/cache"
 	"github.com/zafrem/bastion-sentinel/config"
 	"github.com/zafrem/bastion-sentinel/engine"
+	sentinelv1 "github.com/zafrem/bastion-sentinel/proto"
 	"github.com/zafrem/bastion-sentinel/server"
+	"google.golang.org/grpc"
 )
 
 const audiences = `
@@ -151,5 +154,99 @@ func TestREST_ReloadSwapsThePolicyAndFlushesTheCache(t *testing.T) {
 	r := post(t, srv, "/v1/sentinel/validate/input", inputBody("someone", borderline))
 	if r["profile"] != "open" || r["status"] != "PASSED" {
 		t.Errorf("after the reload the new policy must apply: %v %v", r["profile"], r["status"])
+	}
+}
+
+func grpcFrom(t *testing.T, doc string) *server.GRPC {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "g.yaml")
+	if err := os.WriteFile(p, []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng, err := engine.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _ := cache.New(config.CacheConfig{Enabled: true, Type: "memory"})
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return server.NewGRPC(cfg, cache.NewCached(eng, c, time.Minute), c, "", log, server.NewNotifier(cfg.Notifications, log))
+}
+
+func protoReq(tenant, query string) *sentinelv1.ValidateRequest {
+	r := validProtoRequest(query)
+	r.Metadata["tenant_id"] = tenant
+	return r
+}
+
+func TestGRPC_ResponsesCarryTheProfile(t *testing.T) {
+	g := grpcFrom(t, audiences)
+	ctx := context.Background()
+
+	staff, err := g.Validate(ctx, protoReq("corp", borderline))
+	if err != nil {
+		t.Fatal(err)
+	}
+	public, _ := g.Validate(ctx, protoReq("someone", borderline))
+	if staff.GetProfile() != "staff" || staff.GetStatus() != sentinelv1.ValidateResponse_PASSED {
+		t.Errorf("staff: %q %v", staff.GetProfile(), staff.GetStatus())
+	}
+	if public.GetProfile() != "public" || public.GetStatus() != sentinelv1.ValidateResponse_BLOCKED {
+		t.Errorf("public: %q %v", public.GetProfile(), public.GetStatus())
+	}
+
+	batch, err := g.ValidateBatch(ctx, &sentinelv1.BatchRequest{Requests: []*sentinelv1.ValidateRequest{
+		protoReq("corp", borderline), protoReq("someone", borderline)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := []string{batch.Results[0].GetProfile(), batch.Results[1].GetProfile()}; got[0] != "staff" || got[1] != "public" {
+		t.Errorf("batch profiles: %v", got)
+	}
+
+	// Cached repeat keeps the profile.
+	if again, _ := g.Validate(ctx, protoReq("someone", borderline)); again.GetProfile() != "public" {
+		t.Errorf("cached response lost the profile: %q", again.GetProfile())
+	}
+}
+
+func TestGRPC_NoPolicyLeavesProfileEmpty(t *testing.T) {
+	g := grpcFrom(t, "version: '3.0'\n")
+	r, err := g.Validate(context.Background(), protoReq("acme", "What is AI?"))
+	if err != nil || r.GetProfile() != "" {
+		t.Errorf("err=%v profile=%q", err, r.GetProfile())
+	}
+}
+
+type outStream struct {
+	grpc.ServerStream
+	in  []*sentinelv1.ValidateRequest
+	out []*sentinelv1.ValidateResponse
+}
+
+func (s *outStream) Context() context.Context { return context.Background() }
+func (s *outStream) Recv() (*sentinelv1.ValidateRequest, error) {
+	if len(s.in) == 0 {
+		return nil, io.EOF
+	}
+	r := s.in[0]
+	s.in = s.in[1:]
+	return r, nil
+}
+func (s *outStream) Send(r *sentinelv1.ValidateResponse) error { s.out = append(s.out, r); return nil }
+
+func TestGRPC_OutputStreamCarriesTheProfile(t *testing.T) {
+	g := grpcFrom(t, audiences)
+	st := &outStream{in: []*sentinelv1.ValidateRequest{
+		protoReq("corp", "Yes, it is open."), protoReq("someone", "Yes, it is open.")}}
+	_ = g.ValidateOutputStream(st) // returns io.EOF when the client finishes
+	if len(st.out) != 2 || st.out[0].GetProfile() != "staff" || st.out[1].GetProfile() != "public" {
+		t.Fatalf("got %v", st.out)
+	}
+	if st.out[1].GetStatus() != sentinelv1.ValidateResponse_BLOCKED {
+		t.Errorf("public min_length 20 should block a 16-char answer, got %v", st.out[1].GetStatus())
 	}
 }

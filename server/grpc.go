@@ -333,6 +333,7 @@ func (g *GRPC) ValidateOutputStream(stream sentinelv1.SentinelService_ValidateOu
 			Status:           pbStatus,
 			ProcessingTimeMs: float32(outResp.ProcessingTimeMs),
 			ErrorMessage:     outResp.ErrorMessage,
+			Profile:          outResp.Profile,
 			ExtractedData: &sentinelv1.ExtractedData{
 				TenantId:     meta["tenant_id"],
 				UserId:       meta["user_id"],
@@ -445,6 +446,7 @@ func toProtoResponse(resp types.ValidateResponse) *sentinelv1.ValidateResponse {
 		Status:           pbStatus,
 		ProcessingTimeMs: float32(resp.ProcessingTimeMs),
 		ErrorMessage:     resp.ErrorMessage,
+		Profile:          resp.Profile,
 		Timestamp:        resp.Timestamp.UTC().Format(time.RFC3339Nano),
 		PromptCheck: &sentinelv1.PromptCheck{
 			Status:          string(resp.PromptCheck.Status),
