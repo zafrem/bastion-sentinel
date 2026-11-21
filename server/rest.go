@@ -221,6 +221,20 @@ func (s *REST) handleValidate(w http.ResponseWriter, r *http.Request) {
 					s.log.Warn("industry filter error", "filter_id", f.ID(), "err", ferr)
 					continue
 				}
+				// A scoped exception can exempt one industry filter for this tenant.
+				if (decision.Action == industry.FilterBlock && !decision.Allowed) ||
+					decision.Action == industry.FilterRedact || decision.Action == industry.FilterFlag {
+					if excID, ok := engine.Allowed("sentinel.industry:"+f.ID(), tenantID, req.Metadata["user_id"]); ok {
+						etc := extractTraceContext(
+							r.Header.Get("X-Trace-ID"), r.Header.Get("X-Span-ID"),
+							r.Header.Get("X-Parent-Span-ID"), tenantID,
+							req.Metadata["user_id"], req.RequestID,
+						)
+						s.pub.Publish(EventExceptionApplied(etc, []string{excID}))
+						resp.ExceptionsApplied = append(resp.ExceptionsApplied, excID)
+						continue
+					}
+				}
 				switch decision.Action {
 				case industry.FilterBlock:
 					if !decision.Allowed {
@@ -236,8 +250,11 @@ func (s *REST) handleValidate(w http.ResponseWriter, r *http.Request) {
 							Data:     map[string]interface{}{"filter_id": f.ID(), "reason": decision.Reason},
 							Ctx:      r.Context(),
 						})
-						writeError(w, http.StatusUnprocessableEntity, "INDUSTRY_FILTER_BLOCKED",
-							decision.Reason)
+						s.mu.RLock()
+						detail := s.cfg.UserNotice.Detail
+						s.mu.RUnlock()
+						writeErrorWithNotice(w, http.StatusUnprocessableEntity, "INDUSTRY_FILTER_BLOCKED",
+							decision.Reason, types.NewNotice(detail, types.NoticeBlocked, types.CodeIndustryPolicy, req.RequestID, 0))
 						return
 					}
 				case industry.FilterRedact:
@@ -587,6 +604,12 @@ type errResp struct {
 	Error   string `json:"error"`
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// UserNotice is safe to show the end user; Message is for the integrator.
+	UserNotice *types.UserNotice `json:"user_notice,omitempty"`
+}
+
+func writeErrorWithNotice(w http.ResponseWriter, status int, code, message string, n *types.UserNotice) {
+	writeJSON(w, status, errResp{Error: http.StatusText(status), Code: code, Message: message, UserNotice: n})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

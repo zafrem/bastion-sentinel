@@ -18,6 +18,7 @@ const (
 	CodeContentPolicy      = "CONTENT_POLICY"
 	CodeNotGrounded        = "NOT_GROUNDED"
 	CodeFormatInvalid      = "FORMAT_INVALID"
+	CodeIndustryPolicy     = "INDUSTRY_POLICY"
 	// Used when notice detail is "minimal".
 	CodeRequestBlocked   = "REQUEST_BLOCKED"
 	CodeResponseModified = "RESPONSE_MODIFIED"
@@ -55,7 +56,8 @@ var noticeText = map[string]map[string]string{
 		NoticeBlocked: "This answer was withheld because it could not be verified against the source documents.",
 		NoticeWarned:  "Some statements in this answer could not be verified against the source documents.",
 	},
-	CodeFormatInvalid: {NoticeBlocked: "This answer was withheld because it was not in a valid format."},
+	CodeFormatInvalid:  {NoticeBlocked: "This answer was withheld because it was not in a valid format."},
+	CodeIndustryPolicy: {NoticeBlocked: "Your request could not be processed because it includes information this service is not permitted to handle."},
 }
 
 // NewNotice builds the user-facing notice for a decision. At the "minimal"

@@ -14,6 +14,12 @@ var excClient atomic.Pointer[exceptions.Client]
 // SetExceptions installs the exception store the engines consult.
 func SetExceptions(c *exceptions.Client) { excClient.Store(c) }
 
+// Allowed reports whether an active exception exempts rule for this caller,
+// for callers outside the engine package (for example the industry filters).
+func Allowed(rule, tenant, user string) (exceptionID string, ok bool) {
+	return allowed(rule, tenant, user)
+}
+
 // allowed reports whether an active exception exempts rule for this caller.
 func allowed(rule, tenant, user string) (string, bool) {
 	c := excClient.Load()

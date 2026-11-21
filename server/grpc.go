@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -82,6 +83,24 @@ type GRPC struct {
 
 // Hooks returns the hook manager so external coordinators can register listeners.
 func (g *GRPC) Hooks() *hooks.Manager { return g.hm }
+
+// NoticeTrailerKey is the gRPC trailing-metadata key that carries the JSON
+// user notice. The proto schema is unchanged: callers that want the end-user
+// explanation read this trailer. It is a "-bin" key, so gRPC base64-encodes it.
+const NoticeTrailerKey = "x-bastion-user-notice-bin"
+
+// setNoticeTrailer attaches the end-user notice to a unary response as a
+// trailer. Best effort: a context with no transport stream is ignored.
+func setNoticeTrailer(ctx context.Context, n *types.UserNotice) {
+	if n == nil {
+		return
+	}
+	b, err := json.Marshal(n)
+	if err != nil {
+		return
+	}
+	_ = grpc.SetTrailer(ctx, metadata.Pairs(NoticeTrailerKey, string(b)))
+}
 
 func NewGRPC(cfg *config.Config, val cache.Validator, c cache.Cache, cfgPath string, log *slog.Logger, notifier *Notifier) *GRPC {
 	var pub *EventPublisher
@@ -180,6 +199,7 @@ func (g *GRPC) Validate(ctx context.Context, req *sentinelv1.ValidateRequest) (*
 	g.mu.RUnlock()
 
 	resp := eng.Validate(toEngineRequest(req))
+	setNoticeTrailer(ctx, resp.Notice)
 	requestsTotal.WithLabelValues(string(resp.Status)).Inc()
 	requestDurationMs.Observe(resp.ProcessingTimeMs)
 	injectionScore.Observe(resp.PromptCheck.RiskScore)
