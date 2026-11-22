@@ -20,9 +20,22 @@ spec:
         prometheus.io/port: "8080"
         prometheus.io/path: "/v1/metrics"
     spec:
+      # The image runs as uid 10001; say so here so the cluster enforces it.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: sentinel
         image: bastion/sentinel:1.0.0
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
         ports:
         - containerPort: 8080
           name: rest
@@ -61,6 +74,11 @@ spec:
           periodSeconds: 5
           failureThreshold: 3
         volumeMounts:
+        # The root filesystem is read-only. /tmp is scratch space. If you enable exceptions, point
+        # exceptions.file at a path on a writable volume (this emptyDir is lost on restart; use a PVC
+        # to keep the cache across restarts).
+        - name: tmp
+          mountPath: /tmp
         - name: config
           mountPath: /etc/sentinel
           readOnly: true
@@ -68,6 +86,8 @@ spec:
           mountPath: /models
           readOnly: true
       volumes:
+      - name: tmp
+        emptyDir: {}
       - name: config
         configMap:
           name: sentinel-config
