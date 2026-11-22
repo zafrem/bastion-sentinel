@@ -377,23 +377,33 @@ func TestEvents_CarryTheProfile(t *testing.T) {
 	post(t, srv, "/v1/sentinel/validate/output", map[string]any{"request_id": "o", "llm_response": "Yes, it is open.",
 		"user": map[string]any{"UserID": "u", "TenantID": "someone", "AccessLevel": "full"}})
 
-	deadline := time.Now().Add(3 * time.Second)
-	for len(nats.events()) < 5 && time.Now().Before(deadline) {
-		time.Sleep(20 * time.Millisecond)
-	}
+	// Events are published asynchronously, one goroutine each, so they can arrive in any order and a fixed
+	// count proves nothing. Wait until every event the test depends on has arrived.
+	need := []string{"someone/input_validated", "corp/input_validated", "someone/output_validated"}
 	seen := map[string]bool{}
+	collect := func() {
+		for _, ev := range nats.events() {
+			tenant, _ := ev["tenant_id"].(string)
+			seen[tenant+"/"+fmt.Sprint(ev["event_type"])] = true
+		}
+	}
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		collect()
+		if seen[need[0]] && seen[need[1]] && seen[need[2]] {
+			break
+		}
+	}
+	for _, k := range need {
+		if !seen[k] {
+			t.Errorf("expected event %s, saw %v", k, seen)
+		}
+	}
 	for _, ev := range nats.events() {
 		tenant, _ := ev["tenant_id"].(string)
 		profile, _ := ev["profile"].(string)
 		want := map[string]string{"corp": "staff", "someone": "public"}[tenant]
 		if profile != want {
 			t.Errorf("%v event for tenant %q: profile %q, want %q", ev["event_type"], tenant, profile, want)
-		}
-		seen[tenant+"/"+fmt.Sprint(ev["event_type"])] = true
-	}
-	for _, k := range []string{"someone/input_validated", "corp/input_validated", "someone/output_validated"} {
-		if !seen[k] {
-			t.Errorf("expected event %s, saw %v", k, seen)
 		}
 	}
 }
