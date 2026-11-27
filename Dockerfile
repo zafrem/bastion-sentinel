@@ -9,7 +9,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o sentinel ./cmd/sentinel
 
 # ─── runtime image ────────────────────────────────────────────────────────────
-FROM alpine:3.22
+FROM alpine:3.24
 
 # Apply the distribution's security fixes on top of the (periodically rebuilt) base image.
 RUN apk upgrade --no-cache \
