@@ -11,7 +11,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o sentinel ./c
 # ─── runtime image ────────────────────────────────────────────────────────────
 FROM alpine:3.22
 
-RUN apk add --no-cache ca-certificates tzdata \
+# Apply the distribution's security fixes on top of the (periodically rebuilt) base image.
+RUN apk upgrade --no-cache \
+    && apk add --no-cache ca-certificates tzdata \
     && addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
 
 WORKDIR /app
