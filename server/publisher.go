@@ -58,15 +58,22 @@ type EventPublisher struct {
 	nc *nats.Conn // nil = disabled
 }
 
-// NewEventPublisher connects to NATS. Returns a no-op publisher on error so
-// Sentinel's core validation is never blocked by event bus issues.
+// reconnectWait is the pause between attempts to reach NATS (shortened in tests).
+var reconnectWait = 2 * time.Second
+
+// NewEventPublisher connects to NATS, which need not be up yet. Returns a no-op publisher if the settings are
+// invalid, so Sentinel's core validation is never blocked by event bus issues.
 func NewEventPublisher(natsURL string) *EventPublisher {
 	if natsURL == "" {
 		return &EventPublisher{}
 	}
 	nc, err := nats.Connect(natsURL,
-		nats.MaxReconnects(5),
-		nats.ReconnectWait(2e9),
+		// Keep trying for as long as the process runs, including the first connection: giving up would silence
+		// events until a restart. Events published meanwhile wait in the client's reconnect buffer.
+		nats.RetryOnFailedConnect(true),
+		nats.MaxReconnects(-1),
+		nats.IgnoreAuthErrorAbort(),
+		nats.ReconnectWait(reconnectWait),
 		nats.ErrorHandler(func(_ *nats.Conn, _ *nats.Subscription, err error) {
 			log.Printf("[sentinel-events] nats error: %v", err)
 		}),
